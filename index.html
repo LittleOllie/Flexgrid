@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  base-uri 'self';
+  object-src 'none';
+  frame-ancestors 'none';
+
+  img-src
+    'self'
+    data:
+    blob:
+    https://loflexgrid.littleollienft.workers.dev
+    https://nft-cdn.alchemy.com
+    https://cloudflare-ipfs.com
+    https://ipfs.io
+    https://nftstorage.link
+    https://w3s.link
+    https://dweb.link;
+
+  style-src 'self' 'unsafe-inline';
+  script-src 'self' 'unsafe-inline';
+  connect-src
+    'self'
+    https://*.alchemy.com
+    https://loflexgrid.littleollienft.workers.dev;
+">
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Little Ollie Flex Grid</title>
+
+  <style>
+    *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+    :root{
+      --bg1:#6de0ff; --bg2:#4c6fff;
+      --panel: rgba(0,0,0,.18);
+      --panel2: rgba(0,0,0,.22);
+      --stroke: rgba(255,255,255,.16);
+      --shadow: 0 14px 34px rgba(0,0,0,.35);
+
+      --btnYellow:#ffdd55;
+      --btnYellow2:#ffd22e;
+      --btnText:#222;
+
+      --muted: rgba(255,255,255,.85);
+      --loBlueLine: rgba(109,224,255,0.70);
+
+      /* ✅ Watermark scale (JS updates this) */
+      --wmScale: 1;
+    }
+
+    html,body{ height:100%; margin:0; }
+    body{
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(circle at top, var(--bg1), var(--bg2));
+      color:#fff;
+      display:flex;
+      justify-content:center;
+      align-items:flex-start;
+      padding: 14px 12px 22px;
+      overscroll-behavior:none;
+    }
+
+    .wrap{ width:min(1120px, 98vw); }
+
+    .heroHeader{ width:100%; margin:0 0 12px; }
+    .heroHeader img{
+      width:100%;
+      height:auto;
+      display:block;
+      border-radius: 14px;
+      filter: drop-shadow(0 16px 30px rgba(0,0,0,.35));
+    }
+
+    .panel{
+      width:100%;
+      background: linear-gradient(180deg, var(--panel2), var(--panel));
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      border-radius: 18px;
+      padding: 14px;
+      margin: 12px 0;
+      backdrop-filter: blur(8px);
+    }
+
+    .lbl{
+      display:block;
+      font-weight: 850;
+      font-size: 12px;
+      letter-spacing:.3px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 2px 0 6px;
+    }
+
+    .row{ margin-bottom: 12px; }
+    .row.two{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 520px){
+      .row.two{ grid-template-columns: 1fr; }
+    }
+
+    .input{
+      width:100%;
+      border-radius: 14px;
+      padding: 12px 12px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(76,111,255,.20);
+      color:#fff;
+      outline:none;
+      font-size: 14px;
+    }
+    .input::placeholder{ color: rgba(255,255,255,.70); }
+
+    /* ✅ iPhone zoom fix: any input/select under 16px causes Safari zoom on focus */
+    @media (max-width: 900px){
+      .input{ font-size: 16px; }
+    }
+
+    select.input{
+      appearance:none;
+      background-color: rgba(76,111,255,.20);
+      background-image:
+        linear-gradient(45deg, transparent 50%, rgba(255,255,255,.85) 50%),
+        linear-gradient(135deg, rgba(255,255,255,.85) 50%, transparent 50%);
+      background-position:
+        calc(100% - 18px) calc(1em + 2px),
+        calc(100% - 13px) calc(1em + 2px);
+      background-size: 5px 5px, 5px 5px;
+      background-repeat:no-repeat;
+      padding-right: 32px;
+    }
+    select.input option{
+      background: #4c6fff;
+      color: #fff;
+    }
+
+    .btn{
+      border:0;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-weight: 950;
+      letter-spacing: .2px;
+      background: linear-gradient(180deg, var(--btnYellow), var(--btnYellow2));
+      color: var(--btnText);
+      cursor:pointer;
+      box-shadow: 0 10px 18px rgba(0,0,0,.25);
+      transition: transform .06s ease, opacity .15s ease;
+      user-select:none;
+      white-space: nowrap;
+    }
+    .btn:active{ transform: translateY(1px) scale(.99); }
+    .btn:disabled{ opacity:.55; cursor:not-allowed; transform:none; }
+
+    .actions{
+      display:flex;
+      gap:10px;
+      flex-wrap: wrap;
+      align-items:center;
+    }
+
+    .status{
+      margin-top: 10px;
+      color: rgba(255,255,255,.95);
+      font-size: 14px;
+      white-space: pre-wrap;
+    }
+
+    /* Multi-wallet UI */
+    .walletTools{
+      display:flex;
+      gap:10px;
+      flex-wrap: wrap;
+      align-items:center;
+      margin-top: 8px;
+    }
+    .walletList{
+      margin-top: 10px;
+      background: rgba(76,111,255,.14);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 14px;
+      padding: 10px;
+    }
+    .walletChip{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding: 10px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.04);
+      margin-bottom: 8px;
+    }
+    .walletChip:last-child{ margin-bottom:0; }
+    .walletAddr{
+      font-weight: 900;
+      font-size: 13px;
+      overflow:hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+    .walletMeta{
+      font-size: 12px;
+      opacity: .9;
+    }
+    .chipBtns{ display:flex; gap:8px; flex:0 0 auto; }
+    .btnSmall{
+      border:0;
+      border-radius: 12px;
+      padding: 8px 10px;
+      font-weight: 950;
+      background: linear-gradient(180deg, var(--btnYellow), var(--btnYellow2));
+      color: var(--btnText);
+      cursor:pointer;
+      box-shadow: 0 10px 18px rgba(0,0,0,.18);
+      white-space: nowrap;
+    }
+
+    /* Collections */
+    .collectionsTop{
+      display:flex;
+      gap:10px;
+      align-items:end;
+      flex-wrap: wrap;
+    }
+    .collectionsTop .searchWrap{
+      flex: 1 1 320px;
+      min-width: 220px;
+    }
+    .collectionsTop .miniBtns{
+      display:flex;
+      gap:10px;
+      flex: 0 0 auto;
+    }
+
+    .collectionList{
+      margin-top: 10px;
+      background: rgba(76,111,255,.14);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 14px;
+      padding: 10px;
+      max-height: 280px;
+      overflow:auto;
+    }
+    .collectionItem{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding: 10px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.04);
+      margin-bottom: 8px;
+    }
+    .collectionItem:last-child{ margin-bottom: 0; }
+    .collectionItem input[type="checkbox"]{
+      width:20px; height:20px;
+      accent-color: var(--btnYellow);
+      cursor:pointer;
+      flex: 0 0 auto;
+    }
+    .collectionName{ font-weight: 900; line-height: 1.15; }
+    .collectionCount{ font-size: 12px; opacity: .88; margin-top: 2px; }
+    .hint{ font-size: 12px; opacity:.9; margin-top: 6px; }
+
+    /* Stage */
+    .stageWrap{ margin-top: 12px; }
+    .stage{
+      position:relative;
+      background: rgba(0,0,0,.18);
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .stageHeader{
+      padding: 10px 12px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      border-bottom: 1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.12);
+    }
+    .stageTitle{ font-weight: 950; letter-spacing: .2px; }
+    .stageMeta{ font-size: 12px; opacity:.95; text-align:right; }
+
+    /* Grid */
+    .gridWrap{ position: relative; }
+    .grid{
+      display:grid;
+      gap:0 !important;
+      background: rgba(0,0,0,.08);
+    }
+    .tile{
+      position:relative;
+      width:100%;
+      aspect-ratio: 1/1;
+      overflow:hidden;
+      border-radius: 0 !important;
+      background: rgba(0,0,0,.10);
+    }
+    .tile img{
+      width:100%;
+      height:100%;
+      object-fit: cover;
+      display:block;
+      border-radius: 0 !important;
+      user-select:none;
+      -webkit-user-drag:none;
+    }
+    .fillerText{
+      width:100%; height:100%;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      font-weight: 950;
+      letter-spacing:.2px;
+      color: rgba(255,255,255,0.92);
+      background: rgba(0,0,0,0.22);
+      font-size: 22px;
+    }
+
+    /* ✅ Watermark */
+    .watermarkGrid{
+      position:absolute;
+      left:2px;          /* tighter corner */
+      top:2px;           /* tighter corner */
+      z-index: 5;
+      pointer-events:none;
+
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+
+      font-size: 10px;
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: .15px;
+
+      padding: 2px 5px;
+      border-radius: 6px;
+
+      background: rgba(0,0,0,0.18);
+      color: rgba(255,255,255,0.95);
+      text-shadow: 0 2px 6px rgba(0,0,0,.55);
+
+      border: 0;
+      backdrop-filter: none;
+
+      transform: scale(var(--wmScale));
+      transform-origin: top left;
+
+      /* ✅ default, JS will override to tile width */
+      max-width: 260px;
+    }
+
+    /* Drag visuals */
+    .tile.dragging{ opacity:.55; }
+    .tile.dropTarget{ outline: 2px solid rgba(255,221,85,0.95); outline-offset:-2px; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+
+    <div class="heroHeader">
+      <img src="./header.png" alt="Little Ollie Header" />
+    </div>
+
+    <section class="panel">
+      <div class="row two">
+
+        <!-- LEFT: Wallets -->
+        <div>
+          <label class="lbl">Add wallet</label>
+
+          <!-- ✅ iPhone-safe input attributes -->
+          <input
+            id="walletInput"
+            class="input"
+            placeholder="Paste wallet address (0x...) then add"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false"
+            inputmode="text"
+          />
+
+          <div class="walletTools">
+            <!-- ✅ button type -->
+            <button id="addWalletBtn" class="btn" type="button">➕ Add wallet</button>
+          </div>
+
+          <div id="walletList" class="walletList" style="display:none;"></div>
+
+          <div class="hint">Add multiple wallets, then load them all together.</div>
+        </div>
+
+        <!-- RIGHT: Controls -->
+        <div>
+          <label class="lbl">Chain</label>
+          <select id="chainSelect" class="input">
+            <option value="eth" selected>Ethereum</option>
+            <option value="base">Base</option>
+            <option value="polygon">Polygon (Coming Soon)</option>
+            <option value="apechain">ApeChain (Coming Soon)</option>
+            <option value="solana">Solana (Coming Soon)</option>
+          </select>
+
+          <div style="height:10px"></div>
+
+          <label class="lbl">Grid size</label>
+          <select id="gridSize" class="input">
+            <option value="auto" selected>Auto (fit selected NFTs)</option>
+            <option value="9">3×3 (9)</option>
+            <option value="16">4×4 (16)</option>
+            <option value="25">5×5 (25)</option>
+            <option value="49">7×7 (49)</option>
+            <option value="100">10×10 (100)</option>
+            <option value="custom">Custom Rows × Cols…</option>
+          </select>
+
+          <div id="customGridWrap" style="display:none; margin-top:10px;">
+            <label class="lbl">Custom grid</label>
+
+            <div class="row two" style="margin:0;">
+              <div>
+                <label class="lbl" style="margin-top:0;">Columns</label>
+                <input id="customCols" class="input" type="number" min="1" max="50" value="6" placeholder="Cols (e.g. 8)" />
+              </div>
+
+              <div>
+                <label class="lbl" style="margin-top:0;">Rows</label>
+                <input id="customRows" class="input" type="number" min="1" max="50" value="6" placeholder="Rows (e.g. 5)" />
+              </div>
+            </div>
+
+            <div class="hint">Builds a Rows × Columns grid. Export will match this shape.</div>
+          </div>
+
+          <div style="height:10px"></div>
+
+          <label class="lbl">Fill style</label>
+          <select id="mixMode" class="input">
+            <option value="mix" selected>Mix evenly</option>
+            <option value="order">Fill in order</option>
+          </select>
+        </div>
+
+      </div>
+
+      <div class="row actions" style="margin-top:12px;">
+        <!-- ✅ button types -->
+        <button id="loadBtn" class="btn" type="button" disabled>🔍 Load wallet(s)</button>
+        <button id="buildBtn" class="btn" type="button" disabled>🧩 Build grid</button>
+        <button id="exportBtn" class="btn" type="button" disabled>📸 Export PNG</button>
+<button id="retryBtn" class="btn" type="button">🔄 Retry missing</button>
+
+      </div>
+
+      <div id="status" class="status"></div>
+    </section>
+
+    <section class="panel" id="controlsPanel" style="display:none;">
+      <div class="row">
+        <label class="lbl">Collections</label>
+
+        <div class="collectionsTop">
+          <div class="searchWrap">
+            <input id="collectionSearch" class="input" placeholder="Search collections..." autocomplete="off" autocapitalize="none" spellcheck="false" />
+            <div class="hint">Select collections to include. (Starts unchecked)</div>
+          </div>
+
+          <div class="miniBtns">
+            <button class="btn" type="button" id="selectAllBtn">✅ Select all</button>
+            <button class="btn" type="button" id="selectNoneBtn">🚫 Select none</button>
+          </div>
+        </div>
+
+        <div id="collectionsList" class="collectionList"></div>
+      </div>
+    </section>
+
+    <section class="stageWrap">
+      <div id="stage" class="stage">
+        <div class="stageHeader">
+          <div id="stageTitle" class="stageTitle">Your Flex Grid</div>
+          <div id="stageMeta" class="stageMeta"></div>
+        </div>
+
+        <div class="gridWrap">
+          <div id="grid" class="grid"></div>
+
+          <!-- ✅ watermark -->
+          <div id="wmGrid" class="watermarkGrid" style="display:none;">⚡ Powered by Little Ollie Studio</div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Collection search filter (unchanged) -->
+  <script>
+    (function(){
+      const $ = (id)=>document.getElementById(id);
+      const list = $("collectionsList");
+      const search = $("collectionSearch");
+
+      if (search && list){
+        search.addEventListener("input", () => {
+          const q = search.value.trim().toLowerCase();
+          const items = Array.from(list.children);
+          items.forEach(el => {
+            const txt = (el.innerText || "").toLowerCase();
+            el.style.display = (!q || txt.includes(q)) ? "" : "none";
+          });
+        });
+      }
+    })();
+  </script>
+
+  <!-- ✅ always shows/hides custom grid UI correctly -->
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const gridSize = document.getElementById("gridSize");
+      const wrap = document.getElementById("customGridWrap");
+      if(!gridSize || !wrap) return;
+
+      const sync = () => {
+        wrap.style.display = (gridSize.value === "custom") ? "" : "none";
+      };
+      gridSize.addEventListener("change", sync);
+      sync();
+    });
+  </script>
+
+  <!-- ✅ Watermark auto-scale + lock width to 1 tile (fixes overlap into tile #2) -->
+  <script>
+    (function(){
+      const root = document.documentElement;
+      const grid = document.getElementById("grid");
+      const wm = document.getElementById("wmGrid");
+
+      if(!grid || !wm) return;
+
+      const computeCols = () => {
+        const gtc = getComputedStyle(grid).gridTemplateColumns;
+        if(!gtc) return 0;
+        return gtc.split(" ").filter(Boolean).length;
+      };
+
+      const apply = () => {
+        // scale based on column count
+        const cols = computeCols();
+        if(cols){
+          const scale = Math.max(0.55, Math.min(1, 4 / cols));
+          root.style.setProperty("--wmScale", String(scale));
+        }
+
+        // lock watermark max-width to FIRST tile width (prevents overlapping tile #2)
+        const firstTile = grid.querySelector(".tile");
+        if(firstTile){
+          const w = firstTile.getBoundingClientRect().width || 0;
+          if(w > 0){
+            wm.style.left = "2px";
+            wm.style.top = "2px";
+            wm.style.maxWidth = Math.max(70, Math.floor(w - 4)) + "px";
+          }
+        }
+      };
+
+      // watch when tiles are added/removed
+      const mo = new MutationObserver(() => requestAnimationFrame(apply));
+      mo.observe(grid, { childList:true, subtree:false });
+
+      // also on resize/orientation
+      window.addEventListener("resize", () => requestAnimationFrame(apply));
+      window.addEventListener("orientationchange", () => requestAnimationFrame(apply));
+
+      requestAnimationFrame(apply);
+    })();
+  </script>
+
+  <script type="module" src="./app.js?v=10"></script>
+</body>
+</html>
