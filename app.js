@@ -307,9 +307,6 @@ function safeProxyUrl(src) {
   return IMG_PROXY + encodeURIComponent(direct);
 }
 
-// Toggle this to force refresh when debugging
-const GRID_FORCE_REFRESH = false;
-
 // For GRID: proxy-first, cache-buster OPTIONAL
 const GRID_FORCE_REFRESH = false;
 
