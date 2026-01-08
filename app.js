@@ -1,7 +1,3 @@
-console.log("✅ NEW app.js RUNNING v9999");
-alert("NEW app.js running v9999");
-
-
 /* Little Ollie Flex Grid (SAFE export for file:// + Multi-Wallet)
    - GRID loads via Worker proxy + IPFS gateway fallback
    - Guards against DOUBLE-PROXY
@@ -66,12 +62,6 @@ function createLimiter(max = 3) {
 // 3–5 is generally safe. If your Worker gets 502s, keep it low (3).
 let gridImgLimit = createLimiter(3);
 
-// ---- Image loading tuning ----
-const TILE_TOTAL_BUDGET_MS = 28000;     // total time allowed per tile before "Missing"
-const PROXY_TIMEOUT_MS = 12000;         // per attempt
-const DIRECT_TIMEOUT_MS = 10000;        // per attempt
-const MAX_TILE_PASSES = 2;              // number of full passes over strategies (not per-gateway)
-
 // ---------- Timeout wrapper for image loading ----------
 function loadImgWithTimeout(imgEl, src, timeout = 10000) {
   return Promise.race([
@@ -91,14 +81,16 @@ function loadImgWithTimeout(imgEl, src, timeout = 10000) {
       imgEl.src = "";
       imgEl.src = src;
     }),
-    new Promise((_, reject) =>
+    new Promise((_, reject) => 
       setTimeout(() => reject(new Error("Image load timeout")), timeout)
     )
   ]);
 }
 
 function loadImgWithLimiter(imgEl, src, timeout = 10000) {
-  return gridImgLimit(() => loadImgWithTimeout(imgEl, src, timeout));
+  return gridImgLimit(
+    () => loadImgWithTimeout(imgEl, src, timeout)
+  );
 }
 
 // Non-limited (for direct fallback)
@@ -123,12 +115,12 @@ function addError(error, context = '') {
     stack: error?.stack,
     fullError: error
   };
-
+  
   errorLog.errors.unshift(errorEntry);
   if (errorLog.errors.length > errorLog.maxErrors) {
     errorLog.errors = errorLog.errors.slice(0, errorLog.maxErrors);
   }
-
+  
   updateErrorLogDisplay();
 }
 
@@ -136,19 +128,19 @@ function addError(error, context = '') {
 function updateErrorLogDisplay() {
   const errorLogEl = $("errorLog");
   const errorLogContent = $("errorLogContent");
-
+  
   if (!errorLogEl || !errorLogContent) return;
-
+  
   if (errorLog.errors.length === 0) {
     errorLogEl.style.display = 'none';
     return;
   }
-
+  
   errorLogEl.style.display = 'block';
-  errorLogContent.innerHTML = errorLog.errors.map((err) => {
+  errorLogContent.innerHTML = errorLog.errors.map((err, idx) => {
     const contextText = err.context ? ` <span style="opacity: 0.7;">[${err.context}]</span>` : '';
-    const stackText = err.stack && window.location.hostname === 'localhost'
-      ? `<div style="margin-top: 4px; padding-left: 12px; opacity: 0.6; font-size: 10px;">${err.stack.split('\n').slice(0, 3).join('<br>')}</div>`
+    const stackText = err.stack && window.location.hostname === 'localhost' 
+      ? `<div style="margin-top: 4px; padding-left: 12px; opacity: 0.6; font-size: 10px;">${err.stack.split('\n').slice(0, 3).join('<br>')}</div>` 
       : '';
     return `
       <div style="padding: 6px 0; border-bottom: 1px solid rgba(244, 67, 54, 0.2);">
@@ -173,12 +165,12 @@ function showConnectionStatus(connected) {
   const statusEl = $("connectionStatus");
   const lightEl = $("connectionLight");
   const textEl = $("connectionText");
-
+  
   if (!statusEl) return;
-
+  
   // Always show the indicator
   statusEl.style.display = 'flex';
-
+  
   if (connected) {
     // Green - Connected
     statusEl.style.background = 'rgba(76, 175, 80, 0.15)';
@@ -214,13 +206,17 @@ function setStatus(msg) {
 function updateImageProgress() {
   const { total, loaded, failed, retrying } = state.imageLoadState;
   if (total === 0) return;
-
+  
   const progress = Math.round((loaded / total) * 100);
   let statusMsg = `Loading images: ${loaded}/${total} (${progress}%)`;
-
-  if (failed > 0) statusMsg += ` - ${failed} failed`;
-  if (retrying > 0) statusMsg += ` - ${retrying} retrying...`;
-
+  
+  if (failed > 0) {
+    statusMsg += ` - ${failed} failed`;
+  }
+  if (retrying > 0) {
+    statusMsg += ` - ${retrying} retrying...`;
+  }
+  
   setStatus(statusMsg);
 }
 
@@ -253,7 +249,7 @@ function safeText(s) {
 
 // ---------- URL helpers ----------
 function isAlreadyProxied(url) {
-  return typeof url === "string" && IMG_PROXY && url.startsWith(IMG_PROXY);
+  return typeof url === "string" && url.startsWith(IMG_PROXY);
 }
 
 function getIpfsPath(url) {
@@ -295,7 +291,6 @@ function normalizeImageUrl(url) {
 // ✅ Proxy EVERYTHING, but never twice
 function safeProxyUrl(src) {
   if (!src) return "";
-  if (!IMG_PROXY) return ""; // config not loaded yet
   if (isAlreadyProxied(src)) return src;
 
   const direct = normalizeImageUrl(src);
@@ -304,14 +299,9 @@ function safeProxyUrl(src) {
   return IMG_PROXY + encodeURIComponent(direct);
 }
 
-// Toggle this to force refresh when debugging
-const GRID_FORCE_REFRESH = false;
-
-// For GRID: proxy-first, cache-buster OPTIONAL
+// For GRID: proxy-first + cache-buster per build
 function gridProxyUrl(src) {
   const prox = safeProxyUrl(src);
-  if (!prox) return "";
-  if (!GRID_FORCE_REFRESH) return prox;
   return prox + (prox.includes("?") ? "&" : "?") + "b=" + BUILD_ID;
 }
 
@@ -552,8 +542,8 @@ function buildGrid() {
   // ✅ reset limiter each build (prevents queue clog after many grids)
   gridImgLimit = createLimiter(3);
 
-  // ✅ Only update BUILD_ID when forcing refresh
-  if (GRID_FORCE_REFRESH) BUILD_ID = Date.now();
+  // ✅ new build id (cache-buster for grid loads)
+  BUILD_ID = Date.now();
 
   // Initialize image loading state tracking
   state.imageLoadState = {
@@ -611,7 +601,7 @@ function buildGrid() {
   // Count total images to load (only NFTs with images)
   const nftsWithImages = usedItems.filter(item => item?.image);
   state.imageLoadState.total = nftsWithImages.length;
-
+  
   for (let i = 0; i < usedItems.length; i++) grid.appendChild(makeNFTTile(usedItems[i]));
   const remaining = totalSlots - usedItems.length;
   for (let j = 0; j < remaining; j++) grid.appendChild(makeFillerTile());
@@ -621,14 +611,14 @@ function buildGrid() {
   syncWatermarkDOMToOneTile();
 
   if (exportBtn) exportBtn.disabled = false;
-
+  
   // Show initial progress
   if (state.imageLoadState.total > 0) {
     updateImageProgress();
   } else {
     setStatus("Grid built ✅ (drag tiles to reorder on desktop)");
   }
-
+  
   enableDragDrop();
 }
 
@@ -667,7 +657,6 @@ function markMissing(tile, img, rawUrl) {
     });
   }
 }
-
 async function fetchBestAlchemyImage({ contract, tokenId, host }) {
   const meta = await fetchAlchemyNFTMetadata({ contract, tokenId, host });
 
@@ -682,20 +671,16 @@ async function fetchBestAlchemyImage({ contract, tokenId, host }) {
   return image ? normalizeImageUrl(image) : "";
 }
 
-// GRID loading strategy:
-// A) Alchemy cachedUrl (proxy then direct) once
-// B) Worker proxy (primary)
-// C) Direct non-IPFS https
-// D) Alt IPFS gateways (proxy then direct)
-// E) Retry passes (MAX_TILE_PASSES)
-// F) Missing
-async function loadTileImage(tile, img, rawUrl, pass = 0) {
+// GRID loading strategy (Enhanced with timeout and better fallbacks):
+// 1) Worker proxy (primary, with timeout)
+// 2) Direct URL (if not IPFS and HTTPS, with timeout)
+// 3) Alchemy metadata fallback (proxy-first, then direct)
+// 4) Alternative IPFS gateway (if IPFS)
+// 5) Mark as missing with user feedback
+async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
   const contract = tile.dataset.contract || "";
   const tokenId = tile.dataset.tokenId || "";
-  const start = Number(tile.dataset.loadStart || "0") || Date.now();
-  if (!tile.dataset.loadStart) tile.dataset.loadStart = String(start);
-
-  const deadline = start + TILE_TOTAL_BUDGET_MS;
+  const maxRetries = 2; // Track retry attempts per tile
 
   const ipfsPath = getIpfsPath(rawUrl);
   tile.dataset.ipfsPath = ipfsPath || "";
@@ -711,124 +696,116 @@ async function loadTileImage(tile, img, rawUrl, pass = 0) {
   const primary = ipfsPath ? ("ipfs://" + ipfsPath) : directNormalized;
   tile.dataset.src = primary;
 
-  const timeLeft = () => deadline - Date.now();
-  const stillHaveTime = (min = 500) => timeLeft() > min;
-
-  async function tryLoad(fn) {
-    if (!stillHaveTime()) return false;
-    try {
-      await fn();
-      state.imageLoadState.loaded++;
-      tile.dataset.kind = "loaded";
-      updateImageProgress();
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  if (pass > 0) {
-    const backoff = Math.min(800 * Math.pow(1.6, pass - 1), 3500);
-    await new Promise(r => setTimeout(r, backoff));
-  }
-
-  // A) Alchemy cached URL once
+  // Strategy 1: Alchemy cached URL FIRST (fastest, most reliable - CDN-backed)
+  // Try this BEFORE raw IPFS URLs since Alchemy's CDN is much faster
   if (contract && tokenId && tile.dataset.alchemyTried !== "1") {
     tile.dataset.alchemyTried = "1";
     try {
       const metaUrl = await fetchBestAlchemyImage({ contract, tokenId, host: state.host });
-      if (metaUrl && metaUrl !== primary) {
-        const ok1 = await tryLoad(() =>
-          loadImgWithLimiter(
-            img,
-            gridProxyUrl(metaUrl),
-            Math.min(PROXY_TIMEOUT_MS, Math.max(4000, timeLeft()))
-          )
-        );
-        if (ok1) { tile.dataset.src = metaUrl; return true; }
-
-        if (/^https?:\/\//i.test(metaUrl)) {
-          const ok2 = await tryLoad(() =>
-            loadImgNoLimit(
-              img,
-              metaUrl,
-              Math.min(DIRECT_TIMEOUT_MS, Math.max(3500, timeLeft()))
-            )
-          );
-          if (ok2) { tile.dataset.src = metaUrl; return true; }
+      if (metaUrl && metaUrl !== primary) { // Only use if different from primary
+        // Try Alchemy's cached URL through proxy first
+        try {
+          await loadImgWithLimiter(img, gridProxyUrl(metaUrl), 10000);
+          state.imageLoadState.loaded++;
+          updateImageProgress();
+          tile.dataset.kind = "loaded";
+          tile.dataset.src = metaUrl; // Update to Alchemy URL
+          return true;
+        } catch (e3) {
+          // Try Alchemy URL direct (if HTTPS)
+          if (/^https?:\/\//i.test(metaUrl)) {
+            try {
+              await loadImgNoLimit(img, metaUrl, 8000);
+              state.imageLoadState.loaded++;
+              updateImageProgress();
+              tile.dataset.kind = "loaded";
+              tile.dataset.src = metaUrl;
+              return true;
+            } catch (e4) {
+              // Alchemy URL failed, continue to primary URL
+            }
+          }
         }
       }
-    } catch {}
+    } catch (e5) {
+      // Alchemy fetch failed, continue to primary URL
+    }
   }
 
-  // B) Worker proxy (primary)
-  {
-    const ok = await tryLoad(() =>
-      loadImgWithLimiter(
-        img,
-        gridProxyUrl(primary),
-        Math.min(PROXY_TIMEOUT_MS, Math.max(4000, timeLeft()))
-      )
-    );
-    if (ok) return true;
+  // Strategy 2: Worker proxy (primary URL, 10s timeout)
+  try {
+    await loadImgWithLimiter(img, gridProxyUrl(primary), 10000);
+    state.imageLoadState.loaded++;
+    updateImageProgress();
+    tile.dataset.kind = "loaded";
+    return true;
+  } catch (e1) {
+    // Strategy 3: Direct URL (if HTTPS, 8s timeout)
+    if (!ipfsPath && /^https?:\/\//i.test(primary)) {
+      try {
+        await loadImgNoLimit(img, primary, 8000);
+        state.imageLoadState.loaded++;
+        updateImageProgress();
+        tile.dataset.kind = "loaded";
+        return true;
+      } catch (e2) {
+        // Continue to next strategy
+      }
+    }
   }
 
-  // C) Direct non-IPFS https
-  if (!ipfsPath && /^https?:\/\//i.test(primary)) {
-    const ok = await tryLoad(() =>
-      loadImgNoLimit(
-        img,
-        primary,
-        Math.min(DIRECT_TIMEOUT_MS, Math.max(3500, timeLeft()))
-      )
-    );
-    if (ok) return true;
-  }
-
-  // D) Alt gateways for IPFS (proxy then direct)
-  if (ipfsPath) {
+  // Strategy 4: Alternative IPFS gateways (if IPFS) - Expanded list
+  if (ipfsPath && retryAttempt < maxRetries) {
+    // Try multiple IPFS gateways in order of reliability
     const altGateways = [
-      `https://cloudflare-ipfs.com/ipfs/${ipfsPath}`,
-      `https://w3s.link/ipfs/${ipfsPath}`,
-      `https://nftstorage.link/ipfs/${ipfsPath}`,
-      `https://dweb.link/ipfs/${ipfsPath}`,
-      `https://cf-ipfs.com/ipfs/${ipfsPath}`,
       `https://ipfs.io/ipfs/${ipfsPath}`,
+      `https://cloudflare-ipfs.com/ipfs/${ipfsPath}`,
       `https://gateway.pinata.cloud/ipfs/${ipfsPath}`,
+      `https://nftstorage.link/ipfs/${ipfsPath}`,
+      `https://w3s.link/ipfs/${ipfsPath}`,
+      `https://dweb.link/ipfs/${ipfsPath}`,
+      `https://gateway.ipfs.io/ipfs/${ipfsPath}`,
+      `https://ipfs.filebase.io/ipfs/${ipfsPath}`,
+      `https://cf-ipfs.com/ipfs/${ipfsPath}`
     ];
-
-    for (const gw of altGateways) {
-      const ok = await tryLoad(() =>
-        loadImgWithLimiter(
-          img,
-          gridProxyUrl(gw),
-          Math.min(PROXY_TIMEOUT_MS, Math.max(4000, timeLeft()))
-        )
-      );
-      if (ok) return true;
+    
+    // First try through proxy
+    for (const gatewayUrl of altGateways) {
+      try {
+        await loadImgWithLimiter(img, gridProxyUrl(gatewayUrl), 10000);
+        state.imageLoadState.loaded++;
+        updateImageProgress();
+        tile.dataset.kind = "loaded";
+        return true;
+      } catch (e) {
+        // Try next gateway
+      }
     }
-    for (const gw of altGateways) {
-      const ok = await tryLoad(() =>
-        loadImgNoLimit(
-          img,
-          gw,
-          Math.min(DIRECT_TIMEOUT_MS, Math.max(3500, timeLeft()))
-        )
-      );
-      if (ok) return true;
+    
+    // If proxy fails, try direct gateway URLs (bypass proxy)
+    for (const gatewayUrl of altGateways) {
+      try {
+        await loadImgNoLimit(img, gatewayUrl, 8000);
+        state.imageLoadState.loaded++;
+        updateImageProgress();
+        tile.dataset.kind = "loaded";
+        return true;
+      } catch (e) {
+        // Try next gateway
+      }
     }
   }
 
-  // E) Retry passes
-  if (stillHaveTime(1200) && pass + 1 < MAX_TILE_PASSES) {
-    return loadTileImage(tile, img, rawUrl, pass + 1);
-  }
-
-  // F) Missing
+  // All strategies failed
   markMissing(tile, img, rawUrl);
   state.imageLoadState.failed++;
   updateImageProgress();
-  addError(new Error(`Failed to load image after budget: ${String(rawUrl).slice(0, 120)}`), "Image Loading");
+  
+  // Log image loading failure (only for significant failures)
+  if (retryAttempt === 0) {
+    addError(new Error(`Failed to load image: ${rawUrl.substring(0, 100)}`), 'Image Loading');
+  }
+  
   return false;
 }
 
@@ -856,7 +833,9 @@ function makeNFTTile(it) {
     tile.appendChild(img);
     tile.dataset.rawUrl = raw;
     tile.dataset.retryCount = "0";
-    loadTileImage(tile, img, raw).catch(() => {});
+    loadTileImage(tile, img, raw).catch(() => {
+      // Error already handled in loadTileImage
+    });
   } else {
     tile.dataset.src = "";
     tile.dataset.kind = "empty";
@@ -931,7 +910,8 @@ async function loadWallets() {
   if (chain === "apechain") return setStatus("ApeChain coming soon. For now use ETH or Base.");
 
   if (!state.wallets.length) return setStatus("Add at least one wallet first.");
-
+  
+  // Check if config is loaded
   if (!configLoaded || !ALCHEMY_KEY) {
     return setStatus(
       "⚠️ Configuration not loaded. " +
@@ -961,7 +941,7 @@ async function loadWallets() {
     const grouped = groupByCollection(deduped);
 
     state.collections = grouped;
-    state.selectedKeys = new Set();
+    state.selectedKeys = new Set(); // start unchecked
 
     renderCollectionsList();
     showControlsPanel(true);
@@ -977,12 +957,21 @@ async function loadWallets() {
     if (stageMeta) stageMeta.textContent = "Select collections, then 🧩 Build grid.";
 
     setStatus(`Loaded ${state.wallets.length} wallet(s) ✅ Found ${grouped.length} collections`);
-    showConnectionStatus(true);
+    showConnectionStatus(true); // Show green connection indicator
   } catch (err) {
+    // User-friendly error message instead of console.error
     const errorMsg = err?.message || "Error loading NFTs.";
     setStatus(`❌ ${errorMsg} Please try again or check your wallet addresses.`);
+    
+    // Add to error log
     addError(err, 'Load Wallets');
-    showConnectionStatus(false);
+    
+    // Log to console only in development
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      console.error('NFT loading error:', err);
+    }
+    
+    showConnectionStatus(false); // Hide connection indicator on error
   }
 }
 
@@ -1022,7 +1011,8 @@ async function fetchAlchemyNFTs({ wallet, host }) {
         throw new Error(`Alchemy API error (${res.status}): ${errorText.substring(0, 100)}`);
       }
       const json = await res.json();
-
+      
+      // Check for API errors in response
       if (json.error) {
         throw new Error(`Alchemy API error: ${json.error.message || JSON.stringify(json.error)}`);
       }
@@ -1033,7 +1023,7 @@ async function fetchAlchemyNFTs({ wallet, host }) {
     }
   } catch (error) {
     addError(error, `Alchemy API (${wallet.substring(0, 8)}...)`);
-    throw error;
+    throw error; // Re-throw to be handled by caller
   }
 
   return all;
@@ -1052,12 +1042,12 @@ async function fetchAlchemyNFTMetadata({ contract, tokenId, host }) {
       throw new Error(`Alchemy metadata error (${res.status})`);
     }
     const json = await res.json();
-
+    
     if (json.error) {
       addError(new Error(`Alchemy metadata error: ${json.error.message || JSON.stringify(json.error)}`), `Metadata (${contract.substring(0, 8)}...)`);
       throw new Error(`Alchemy metadata error: ${json.error.message || JSON.stringify(json.error)}`);
     }
-
+    
     return json;
   } catch (error) {
     if (!error.message.includes('Alchemy metadata')) {
@@ -1137,6 +1127,7 @@ async function exportPNG() {
 
       try {
         if (srcDirect && srcDirect.length > 5) {
+          // Export MUST proxy (canvas safety)
           const img = await loadImage(exportProxyUrl(srcDirect));
           drawCover(ctx, img, x, y, size, size);
         } else {
@@ -1147,6 +1138,7 @@ async function exportPNG() {
       }
     }
 
+    // ✅ Export watermark: top-left, ONE LINE, ONE TILE WIDTH
     const boxX = Math.round((pad + 4) * scale);
     const boxY = Math.round((pad + 4) * scale);
     const boxW = Math.round(tileSize * scale);
@@ -1178,6 +1170,7 @@ async function exportPNG() {
     const textY = boxY + boxPadY + fontPx - Math.round(fontPx * 0.10);
     ctx.fillText(finalText, boxX + boxPadX, textY);
 
+    // Outer border
     ctx.strokeStyle = "rgba(109,224,255,0.70)";
     ctx.lineWidth = borderPx * scale;
     ctx.strokeRect(1, 1, outW - 2, outH - 2);
@@ -1197,9 +1190,17 @@ async function exportPNG() {
       setStatus("Exported PNG ✅");
     }, "image/png");
   } catch (err) {
+    // User-friendly error message
     const errorMsg = err?.message || "Export failed";
     setStatus(`❌ Export failed: ${errorMsg}. Please try again.`);
+    
+    // Add to error log
     addError(err, 'Export PNG');
+    
+    // Log to console only in development
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      console.error('Export error:', err);
+    }
   }
 }
 
@@ -1262,7 +1263,7 @@ function drawCover(ctx, img, x, y, w, h) {
 }
 
 // ---------- Events + Retry ----------
-function bindEvents() {
+(function bindEvents() {
   // Wallet input hardening
   const walletInput = $("walletInput");
   if (walletInput) {
@@ -1278,7 +1279,7 @@ function bindEvents() {
     });
   }
 
-  // ✅ Add wallet binding (ROBUST)
+  // Single-tap safe "Add wallet"
   const addBtn = $("addWalletBtn");
   if (addBtn) {
     addBtn.type = "button";
@@ -1292,13 +1293,9 @@ function bindEvents() {
       addWallet();
     };
 
-    // click is the most reliable everywhere
-    addBtn.addEventListener("click", handler, { passive: false });
-
-    // pointer/touch helps on some iOS cases too (kept, but click remains primary)
-    if (window.PointerEvent) {
-      addBtn.addEventListener("pointerup", handler, { passive: false });
-    } else {
+    if (window.PointerEvent) addBtn.addEventListener("pointerup", handler, { passive: false });
+    else {
+      addBtn.addEventListener("click", handler, { passive: false });
       addBtn.addEventListener("touchend", handler, { passive: false });
     }
   }
@@ -1313,7 +1310,6 @@ function bindEvents() {
       if (exportBtn) exportBtn.disabled = true;
     });
   }
-
   const customRows = $("customRows");
   const customCols = $("customCols");
   const markExportDirty = () => {
@@ -1377,6 +1373,7 @@ function bindEvents() {
       if (!needsRetry) continue;
       attempted++;
 
+      // Exponential backoff: wait longer for each retry
       const delay = Math.min(500 * Math.pow(1.3, i), 3000);
       if (i > 0) await new Promise(resolve => setTimeout(resolve, delay));
 
@@ -1396,23 +1393,27 @@ function bindEvents() {
 
       tile.dataset.kind = "nft";
       tile.dataset.rawUrl = rawUrl;
-      delete tile.dataset.loadStart; // reset budget timer for retries
-
+      
+      // Reset retry attempt counter for this tile
       const retryCount = parseInt(tile.dataset.retryCount || "0");
       tile.dataset.retryCount = (retryCount + 1).toString();
-
+      
+      // Try loading with enhanced function
       try {
         const success = await loadTileImage(tile, img, rawUrl, retryCount);
         if (success) {
           successful++;
           state.imageLoadState.failed = Math.max(0, state.imageLoadState.failed - 1);
         }
-      } catch (e) {}
-
+      } catch (e) {
+        // Error handled in loadTileImage
+      }
+      
       state.imageLoadState.retrying = tiles.length - (i + 1);
       updateImageProgress();
     }
 
+    // Update status after retries
     state.imageLoadState.retrying = 0;
     if (successful > 0) {
       setStatus(`✅ Retry successful: ${successful} image(s) loaded. ${tiles.length - successful} still missing.`);
@@ -1443,34 +1444,39 @@ function bindEvents() {
     retryBtn.addEventListener("click", retryMissingTiles);
   }
 
+  // Clear error log button
   const clearErrorLogBtn = $("clearErrorLog");
   if (clearErrorLogBtn) {
     clearErrorLogBtn.addEventListener("click", clearErrorLog);
   }
 
+  // Auto retry after sleep/tab return
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) retryMissingTiles();
   });
   window.addEventListener("focus", retryMissingTiles);
 
+  // Watermark on resize
   window.addEventListener("resize", syncWatermarkDOMToOneTile);
   window.addEventListener("orientationchange", syncWatermarkDOMToOneTile);
-}
+})(); // End of bindEvents IIFE
 
 // Load configuration securely
 async function initializeConfig() {
   try {
+    // Try to import and load config
     const { loadConfig } = await import('./config.js');
     const config = await loadConfig();
-
+    
     ALCHEMY_KEY = config.alchemyApiKey;
     IMG_PROXY = config.workerUrl;
     configLoaded = true;
-
+    
     enableButtons();
     setStatus("Ready ✅ ➕ Add wallet(s) → 🔍 Load wallet(s) → select collections → 🧩 Build → 📸 Export");
-    showConnectionStatus(false);
+    showConnectionStatus(false); // Not connected yet, just config loaded
   } catch (error) {
+    // Config loading failed
     const statusEl = $("status");
     if (statusEl) {
       statusEl.innerHTML = `
@@ -1485,24 +1491,23 @@ async function initializeConfig() {
         </div>
       `;
     }
-
+    
+    // Add to error log
     addError(error, 'Config Loading');
-
+    
+    // Disable buttons that require config
     const loadBtn = $("loadBtn");
     const buildBtn = $("buildBtn");
     const exportBtn = $("exportBtn");
     if (loadBtn) loadBtn.disabled = true;
     if (buildBtn) buildBtn.disabled = true;
     if (exportBtn) exportBtn.disabled = true;
-
+    
     showConnectionStatus(false);
   }
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  bindEvents();
-  initializeConfig();
-  enableButtons();
-});
+// Initialize config on page load
+initializeConfig();
 
-enableButtons();
+enableButtons(); 
