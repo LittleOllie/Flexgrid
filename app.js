@@ -307,15 +307,14 @@ function safeProxyUrl(src) {
   return IMG_PROXY + encodeURIComponent(direct);
 }
 
-// For GRID: proxy-first, cache-buster OPTIONAL
+// Toggle this to force refresh when debugging
 const GRID_FORCE_REFRESH = false;
 
+// For GRID: proxy-first, cache-buster OPTIONAL
 function gridProxyUrl(src) {
   const prox = safeProxyUrl(src);
   if (!GRID_FORCE_REFRESH) return prox;
   return prox + (prox.includes("?") ? "&" : "?") + "b=" + BUILD_ID;
-}
-
 }
 
 
