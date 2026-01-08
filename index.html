@@ -6,7 +6,6 @@
   default-src 'self';
   base-uri 'self';
   object-src 'none';
-  frame-ancestors 'none';
 
   img-src
     'self'
@@ -30,6 +29,7 @@
 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <link rel="icon" type="image/png" href="../icons/icon-192.png" />
   <title>Little Ollie Flex Grid</title>
 
   <style>
@@ -466,7 +466,24 @@
 
       </div>
 
-      <div id="status" class="status"></div>
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+        <div id="connectionStatus" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(244, 67, 54, 0.15); border: 1px solid rgba(244, 67, 54, 0.3); border-radius: 8px;">
+          <div id="connectionLight" style="width: 12px; height: 12px; background: #f44336; border-radius: 50%; box-shadow: 0 0 8px rgba(244, 67, 54, 0.6); animation: pulse 2s infinite;"></div>
+          <span id="connectionText" style="font-size: 13px; font-weight: 700; color: #f44336;">Not Connected</span>
+        </div>
+        <div id="status" class="status" style="flex: 1;"></div>
+      </div>
+      
+      <!-- Error Log -->
+      <div id="errorLog" style="display: none; margin-top: 12px; padding: 12px; background: rgba(244, 67, 54, 0.1); border: 1px solid rgba(244, 67, 54, 0.3); border-radius: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+          <span style="font-size: 14px; font-weight: 900; color: #f44336;">⚠️ Error Log</span>
+          <button id="clearErrorLog" style="margin-left: auto; padding: 4px 8px; font-size: 11px; background: rgba(244, 67, 54, 0.2); border: 1px solid rgba(244, 67, 54, 0.4); border-radius: 6px; color: #f44336; cursor: pointer;">Clear</button>
+        </div>
+        <div id="errorLogContent" style="max-height: 200px; overflow-y: auto; font-family: 'Monaco', 'Courier New', monospace; font-size: 11px; line-height: 1.6;">
+          <!-- Errors will be added here -->
+        </div>
+      </div>
     </section>
 
     <section class="panel" id="controlsPanel" style="display:none;">

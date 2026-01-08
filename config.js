@@ -22,7 +22,7 @@
 
 const DEV_CONFIG = {
   // Set to true to use development config
-  enabled: false,
+  enabled: true, // Enabled for local development
   
   // Development API key (will be rotated)
   alchemyApiKey: "GYuepn7j7XCslBzxLwO5M",
@@ -76,10 +76,9 @@ async function loadConfig() {
     // Only warn in development
     if (window.location.hostname === 'localhost') {
       console.warn('⚠️ Secure config endpoint not available:', error.message);
-      console.warn('   Make sure backend server is running on port 3000');
-      console.warn('   Or set up one of the other config methods');
+      console.warn('   Falling back to DEV_CONFIG...');
     }
-    throw error; // Re-throw to try next method
+    // Don't throw - continue to next method (DEV_CONFIG fallback)
   }
   
   // Method 2: Load from environment variables (if using build system)

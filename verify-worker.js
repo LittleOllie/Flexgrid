@@ -177,9 +177,19 @@ async function testWorker() {
   return results;
 }
 
-// Run if in Node.js
+// Export for Node.js
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { testWorker, WORKER_URL };
+  module.exports = { testWorker, WORKER_URL, TEST_URLS };
+  
+  // Auto-run when executed directly
+  if (require.main === module) {
+    testWorker().then(() => {
+      process.exit(0);
+    }).catch((error) => {
+      console.error("❌ Test failed:", error);
+      process.exit(1);
+    });
+  }
 }
 
 // Auto-run if in browser

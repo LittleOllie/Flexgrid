@@ -99,6 +99,105 @@ function loadImgNoLimit(imgEl, src, timeout = 8000) {
 }
 
 // ---------- UI helpers ----------
+// Error log state
+const errorLog = {
+  errors: [],
+  maxErrors: 50
+};
+
+// Add error to log
+function addError(error, context = '') {
+  const timestamp = new Date().toLocaleTimeString();
+  const errorEntry = {
+    timestamp,
+    message: error?.message || String(error),
+    context,
+    stack: error?.stack,
+    fullError: error
+  };
+  
+  errorLog.errors.unshift(errorEntry);
+  if (errorLog.errors.length > errorLog.maxErrors) {
+    errorLog.errors = errorLog.errors.slice(0, errorLog.maxErrors);
+  }
+  
+  updateErrorLogDisplay();
+}
+
+// Update error log display
+function updateErrorLogDisplay() {
+  const errorLogEl = $("errorLog");
+  const errorLogContent = $("errorLogContent");
+  
+  if (!errorLogEl || !errorLogContent) return;
+  
+  if (errorLog.errors.length === 0) {
+    errorLogEl.style.display = 'none';
+    return;
+  }
+  
+  errorLogEl.style.display = 'block';
+  errorLogContent.innerHTML = errorLog.errors.map((err, idx) => {
+    const contextText = err.context ? ` <span style="opacity: 0.7;">[${err.context}]</span>` : '';
+    const stackText = err.stack && window.location.hostname === 'localhost' 
+      ? `<div style="margin-top: 4px; padding-left: 12px; opacity: 0.6; font-size: 10px;">${err.stack.split('\n').slice(0, 3).join('<br>')}</div>` 
+      : '';
+    return `
+      <div style="padding: 6px 0; border-bottom: 1px solid rgba(244, 67, 54, 0.2);">
+        <div style="color: #f44336; font-weight: 700;">
+          <span style="opacity: 0.7; font-size: 10px;">[${err.timestamp}]</span>${contextText}
+        </div>
+        <div style="margin-top: 2px; color: #ffcdd2;">${err.message}</div>
+        ${stackText}
+      </div>
+    `;
+  }).join('');
+}
+
+// Clear error log
+function clearErrorLog() {
+  errorLog.errors = [];
+  updateErrorLogDisplay();
+}
+
+// Show connection status (red = not connected, green = connected)
+function showConnectionStatus(connected) {
+  const statusEl = $("connectionStatus");
+  const lightEl = $("connectionLight");
+  const textEl = $("connectionText");
+  
+  if (!statusEl) return;
+  
+  // Always show the indicator
+  statusEl.style.display = 'flex';
+  
+  if (connected) {
+    // Green - Connected
+    statusEl.style.background = 'rgba(76, 175, 80, 0.15)';
+    statusEl.style.borderColor = 'rgba(76, 175, 80, 0.3)';
+    if (lightEl) {
+      lightEl.style.background = '#4CAF50';
+      lightEl.style.boxShadow = '0 0 8px rgba(76, 175, 80, 0.6)';
+    }
+    if (textEl) {
+      textEl.textContent = 'Connected';
+      textEl.style.color = '#4CAF50';
+    }
+  } else {
+    // Red - Not Connected
+    statusEl.style.background = 'rgba(244, 67, 54, 0.15)';
+    statusEl.style.borderColor = 'rgba(244, 67, 54, 0.3)';
+    if (lightEl) {
+      lightEl.style.background = '#f44336';
+      lightEl.style.boxShadow = '0 0 8px rgba(244, 67, 54, 0.6)';
+    }
+    if (textEl) {
+      textEl.textContent = 'Not Connected';
+      textEl.style.color = '#f44336';
+    }
+  }
+}
+
 function setStatus(msg) {
   const el = $("status");
   if (el) el.textContent = msg || "";
@@ -557,7 +656,7 @@ function markMissing(tile, img, rawUrl) {
       ipfsPath: tile.dataset.ipfsPath
     });
   }
-
+}
 async function fetchBestAlchemyImage({ contract, tokenId, host }) {
   const meta = await fetchAlchemyNFTMetadata({ contract, tokenId, host });
 
@@ -597,7 +696,43 @@ async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
   const primary = ipfsPath ? ("ipfs://" + ipfsPath) : directNormalized;
   tile.dataset.src = primary;
 
-  // Strategy 1: Worker proxy (primary, 10s timeout)
+  // Strategy 1: Alchemy cached URL FIRST (fastest, most reliable - CDN-backed)
+  // Try this BEFORE raw IPFS URLs since Alchemy's CDN is much faster
+  if (contract && tokenId && tile.dataset.alchemyTried !== "1") {
+    tile.dataset.alchemyTried = "1";
+    try {
+      const metaUrl = await fetchBestAlchemyImage({ contract, tokenId, host: state.host });
+      if (metaUrl && metaUrl !== primary) { // Only use if different from primary
+        // Try Alchemy's cached URL through proxy first
+        try {
+          await loadImgWithLimiter(img, gridProxyUrl(metaUrl), 10000);
+          state.imageLoadState.loaded++;
+          updateImageProgress();
+          tile.dataset.kind = "loaded";
+          tile.dataset.src = metaUrl; // Update to Alchemy URL
+          return true;
+        } catch (e3) {
+          // Try Alchemy URL direct (if HTTPS)
+          if (/^https?:\/\//i.test(metaUrl)) {
+            try {
+              await loadImgNoLimit(img, metaUrl, 8000);
+              state.imageLoadState.loaded++;
+              updateImageProgress();
+              tile.dataset.kind = "loaded";
+              tile.dataset.src = metaUrl;
+              return true;
+            } catch (e4) {
+              // Alchemy URL failed, continue to primary URL
+            }
+          }
+        }
+      }
+    } catch (e5) {
+      // Alchemy fetch failed, continue to primary URL
+    }
+  }
+
+  // Strategy 2: Worker proxy (primary URL, 10s timeout)
   try {
     await loadImgWithLimiter(img, gridProxyUrl(primary), 10000);
     state.imageLoadState.loaded++;
@@ -605,7 +740,7 @@ async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
     tile.dataset.kind = "loaded";
     return true;
   } catch (e1) {
-    // Strategy 2: Direct URL (if HTTPS, 8s timeout)
+    // Strategy 3: Direct URL (if HTTPS, 8s timeout)
     if (!ipfsPath && /^https?:\/\//i.test(primary)) {
       try {
         await loadImgNoLimit(img, primary, 8000);
@@ -619,52 +754,38 @@ async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
     }
   }
 
-  // Strategy 3: Alchemy metadata fallback
-  if (contract && tokenId && tile.dataset.alchemyTried !== "1") {
-    tile.dataset.alchemyTried = "1";
-    try {
-      const metaUrl = await fetchBestAlchemyImage({ contract, tokenId, host: state.host });
-      if (metaUrl) {
-        tile.dataset.src = metaUrl;
-
-        // Try proxy first
-        try {
-          await loadImgWithLimiter(img, gridProxyUrl(metaUrl), 10000);
-          state.imageLoadState.loaded++;
-          updateImageProgress();
-          tile.dataset.kind = "loaded";
-          return true;
-        } catch (e3) {
-          // Try direct
-          if (/^https?:\/\//i.test(metaUrl)) {
-            try {
-              await loadImgNoLimit(img, metaUrl, 8000);
-              state.imageLoadState.loaded++;
-              updateImageProgress();
-              tile.dataset.kind = "loaded";
-              return true;
-            } catch (e4) {
-              // Continue to mark as missing
-            }
-          }
-        }
-      }
-    } catch (e5) {
-      // Alchemy fetch failed, continue
-    }
-  }
-
-  // Strategy 4: Alternative IPFS gateway (if IPFS)
+  // Strategy 4: Alternative IPFS gateways (if IPFS) - Expanded list
   if (ipfsPath && retryAttempt < maxRetries) {
+    // Try multiple IPFS gateways in order of reliability
     const altGateways = [
       `https://ipfs.io/ipfs/${ipfsPath}`,
       `https://cloudflare-ipfs.com/ipfs/${ipfsPath}`,
-      `https://gateway.pinata.cloud/ipfs/${ipfsPath}`
+      `https://gateway.pinata.cloud/ipfs/${ipfsPath}`,
+      `https://nftstorage.link/ipfs/${ipfsPath}`,
+      `https://w3s.link/ipfs/${ipfsPath}`,
+      `https://dweb.link/ipfs/${ipfsPath}`,
+      `https://gateway.ipfs.io/ipfs/${ipfsPath}`,
+      `https://ipfs.filebase.io/ipfs/${ipfsPath}`,
+      `https://cf-ipfs.com/ipfs/${ipfsPath}`
     ];
     
+    // First try through proxy
     for (const gatewayUrl of altGateways) {
       try {
         await loadImgWithLimiter(img, gridProxyUrl(gatewayUrl), 10000);
+        state.imageLoadState.loaded++;
+        updateImageProgress();
+        tile.dataset.kind = "loaded";
+        return true;
+      } catch (e) {
+        // Try next gateway
+      }
+    }
+    
+    // If proxy fails, try direct gateway URLs (bypass proxy)
+    for (const gatewayUrl of altGateways) {
+      try {
+        await loadImgNoLimit(img, gatewayUrl, 8000);
         state.imageLoadState.loaded++;
         updateImageProgress();
         tile.dataset.kind = "loaded";
@@ -679,6 +800,12 @@ async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
   markMissing(tile, img, rawUrl);
   state.imageLoadState.failed++;
   updateImageProgress();
+  
+  // Log image loading failure (only for significant failures)
+  if (retryAttempt === 0) {
+    addError(new Error(`Failed to load image: ${rawUrl.substring(0, 100)}`), 'Image Loading');
+  }
+  
   return false;
 }
 
@@ -830,15 +957,21 @@ async function loadWallets() {
     if (stageMeta) stageMeta.textContent = "Select collections, then 🧩 Build grid.";
 
     setStatus(`Loaded ${state.wallets.length} wallet(s) ✅ Found ${grouped.length} collections`);
+    showConnectionStatus(true); // Show green connection indicator
   } catch (err) {
     // User-friendly error message instead of console.error
     const errorMsg = err?.message || "Error loading NFTs.";
     setStatus(`❌ ${errorMsg} Please try again or check your wallet addresses.`);
     
+    // Add to error log
+    addError(err, 'Load Wallets');
+    
     // Log to console only in development
     if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
       console.error('NFT loading error:', err);
     }
+    
+    showConnectionStatus(false); // Hide connection indicator on error
   }
 }
 
@@ -864,34 +997,64 @@ async function fetchAlchemyNFTs({ wallet, host }) {
   let all = [];
   const hardCap = 800;
 
-  while (all.length < hardCap) {
-    const url = new URL(baseUrl);
-    url.searchParams.set("owner", wallet);
-    url.searchParams.set("withMetadata", "true");
-    url.searchParams.set("pageSize", "100");
-    if (pageKey) url.searchParams.set("pageKey", pageKey);
+  try {
+    while (all.length < hardCap) {
+      const url = new URL(baseUrl);
+      url.searchParams.set("owner", wallet);
+      url.searchParams.set("withMetadata", "true");
+      url.searchParams.set("pageSize", "100");
+      if (pageKey) url.searchParams.set("pageKey", pageKey);
 
-    const res = await fetch(url.toString());
-    if (!res.ok) throw new Error(`Alchemy error (${res.status})`);
-    const json = await res.json();
+      const res = await fetch(url.toString());
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => '');
+        throw new Error(`Alchemy API error (${res.status}): ${errorText.substring(0, 100)}`);
+      }
+      const json = await res.json();
+      
+      // Check for API errors in response
+      if (json.error) {
+        throw new Error(`Alchemy API error: ${json.error.message || JSON.stringify(json.error)}`);
+      }
 
-    all.push(...(json.ownedNfts || []));
-    if (!json.pageKey) break;
-    pageKey = json.pageKey;
+      all.push(...(json.ownedNfts || []));
+      if (!json.pageKey) break;
+      pageKey = json.pageKey;
+    }
+  } catch (error) {
+    addError(error, `Alchemy API (${wallet.substring(0, 8)}...)`);
+    throw error; // Re-throw to be handled by caller
   }
 
   return all;
 }
 
 async function fetchAlchemyNFTMetadata({ contract, tokenId, host }) {
-  const url = new URL(`https://${host}/nft/v3/${ALCHEMY_KEY}/getNFTMetadata`);
-  url.searchParams.set("contractAddress", contract);
-  url.searchParams.set("tokenId", tokenId);
-  url.searchParams.set("refreshCache", "false");
+  try {
+    const url = new URL(`https://${host}/nft/v3/${ALCHEMY_KEY}/getNFTMetadata`);
+    url.searchParams.set("contractAddress", contract);
+    url.searchParams.set("tokenId", tokenId);
+    url.searchParams.set("refreshCache", "false");
 
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`Alchemy metadata error (${res.status})`);
-  return await res.json();
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+      addError(new Error(`Alchemy metadata fetch failed: ${res.status}`), `Metadata (${contract.substring(0, 8)}...)`);
+      throw new Error(`Alchemy metadata error (${res.status})`);
+    }
+    const json = await res.json();
+    
+    if (json.error) {
+      addError(new Error(`Alchemy metadata error: ${json.error.message || JSON.stringify(json.error)}`), `Metadata (${contract.substring(0, 8)}...)`);
+      throw new Error(`Alchemy metadata error: ${json.error.message || JSON.stringify(json.error)}`);
+    }
+    
+    return json;
+  } catch (error) {
+    if (!error.message.includes('Alchemy metadata')) {
+      addError(error, `Metadata Fetch (${contract.substring(0, 8)}...)`);
+    }
+    throw error;
+  }
 }
 
 function groupByCollection(nfts) {
@@ -1030,6 +1193,9 @@ async function exportPNG() {
     // User-friendly error message
     const errorMsg = err?.message || "Export failed";
     setStatus(`❌ Export failed: ${errorMsg}. Please try again.`);
+    
+    // Add to error log
+    addError(err, 'Export PNG');
     
     // Log to console only in development
     if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
@@ -1278,6 +1444,12 @@ function drawCover(ctx, img, x, y, w, h) {
     retryBtn.addEventListener("click", retryMissingTiles);
   }
 
+  // Clear error log button
+  const clearErrorLogBtn = $("clearErrorLog");
+  if (clearErrorLogBtn) {
+    clearErrorLogBtn.addEventListener("click", clearErrorLog);
+  }
+
   // Auto retry after sleep/tab return
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) retryMissingTiles();
@@ -1287,49 +1459,55 @@ function drawCover(ctx, img, x, y, w, h) {
   // Watermark on resize
   window.addEventListener("resize", syncWatermarkDOMToOneTile);
   window.addEventListener("orientationchange", syncWatermarkDOMToOneTile);
+})(); // End of bindEvents IIFE
 
-  // Load configuration securely
-  async function initializeConfig() {
-    try {
-      // Try to import and load config
-      const { loadConfig } = await import('./config.js');
-      const config = await loadConfig();
-      
-      ALCHEMY_KEY = config.alchemyApiKey;
-      IMG_PROXY = config.workerUrl;
-      configLoaded = true;
-      
-      enableButtons();
-      setStatus("Ready ✅ ➕ Add wallet(s) → 🔍 Load wallet(s) → select collections → 🧩 Build → 📸 Export");
-    } catch (error) {
-      // Config loading failed
-      const statusEl = $("status");
-      if (statusEl) {
-        statusEl.innerHTML = `
-          <div style="color: #ff6b6b; font-weight: 900; margin-bottom: 8px;">
-            ⚠️ Configuration Error
-          </div>
-          <div style="margin-bottom: 8px;">
-            ${error.message}
-          </div>
-          <div style="font-size: 12px; opacity: 0.9;">
-            See <strong>FLEX_GRID_SETUP.md</strong> for setup instructions.
-          </div>
-        `;
-      }
-      
-      // Disable buttons that require config
-      const loadBtn = $("loadBtn");
-      const buildBtn = $("buildBtn");
-      const exportBtn = $("exportBtn");
-      if (loadBtn) loadBtn.disabled = true;
-      if (buildBtn) buildBtn.disabled = true;
-      if (exportBtn) exportBtn.disabled = true;
+// Load configuration securely
+async function initializeConfig() {
+  try {
+    // Try to import and load config
+    const { loadConfig } = await import('./config.js');
+    const config = await loadConfig();
+    
+    ALCHEMY_KEY = config.alchemyApiKey;
+    IMG_PROXY = config.workerUrl;
+    configLoaded = true;
+    
+    enableButtons();
+    setStatus("Ready ✅ ➕ Add wallet(s) → 🔍 Load wallet(s) → select collections → 🧩 Build → 📸 Export");
+    showConnectionStatus(false); // Not connected yet, just config loaded
+  } catch (error) {
+    // Config loading failed
+    const statusEl = $("status");
+    if (statusEl) {
+      statusEl.innerHTML = `
+        <div style="color: #ff6b6b; font-weight: 900; margin-bottom: 8px;">
+          ⚠️ Configuration Error
+        </div>
+        <div style="margin-bottom: 8px;">
+          ${error.message}
+        </div>
+        <div style="font-size: 12px; opacity: 0.9;">
+          See <strong>FLEX_GRID_SETUP.md</strong> for setup instructions.
+        </div>
+      `;
     }
+    
+    // Add to error log
+    addError(error, 'Config Loading');
+    
+    // Disable buttons that require config
+    const loadBtn = $("loadBtn");
+    const buildBtn = $("buildBtn");
+    const exportBtn = $("exportBtn");
+    if (loadBtn) loadBtn.disabled = true;
+    if (buildBtn) buildBtn.disabled = true;
+    if (exportBtn) exportBtn.disabled = true;
+    
+    showConnectionStatus(false);
   }
-  
-  // Initialize config on page load
-  initializeConfig();
-  
-  enableButtons();
-})();
+}
+
+// Initialize config on page load
+initializeConfig();
+
+enableButtons(); 
