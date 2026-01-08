@@ -311,10 +311,14 @@ function safeProxyUrl(src) {
 const GRID_FORCE_REFRESH = false;
 
 // For GRID: proxy-first, cache-buster OPTIONAL
+const GRID_FORCE_REFRESH = false;
+
 function gridProxyUrl(src) {
   const prox = safeProxyUrl(src);
   if (!GRID_FORCE_REFRESH) return prox;
   return prox + (prox.includes("?") ? "&" : "?") + "b=" + BUILD_ID;
+}
+
 }
 
 
