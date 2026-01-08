@@ -62,10 +62,18 @@ function createLimiter(max = 3) {
 // 3–5 is generally safe. If your Worker gets 502s, keep it low (3).
 let gridImgLimit = createLimiter(3);
 
+
+// ---- Image loading tuning ----
+const TILE_TOTAL_BUDGET_MS = 28000;     // total time allowed per tile before "Missing"
+const PROXY_TIMEOUT_MS = 12000;         // per attempt
+const DIRECT_TIMEOUT_MS = 10000;        // per attempt
+const MAX_TILE_PASSES = 2;              // number of full passes over strategies (not per-gateway)
+
+
 // ---------- Timeout wrapper for image loading ----------
 function loadImgWithTimeout(imgEl, src, timeout = 10000) {
   return Promise.race([
-    new Promise((resolve, reject) => {
+       new Promise((resolve, reject) => {
       const clean = () => {
         imgEl.onload = null;
         imgEl.onerror = null;
@@ -299,11 +307,16 @@ function safeProxyUrl(src) {
   return IMG_PROXY + encodeURIComponent(direct);
 }
 
-// For GRID: proxy-first + cache-buster per build
+// Toggle this to force refresh when debugging
+const GRID_FORCE_REFRESH = false;
+
+// For GRID: proxy-first, cache-buster OPTIONAL
 function gridProxyUrl(src) {
   const prox = safeProxyUrl(src);
+  if (!GRID_FORCE_REFRESH) return prox;
   return prox + (prox.includes("?") ? "&" : "?") + "b=" + BUILD_ID;
 }
+
 
 // For EXPORT: proxy only (avoid canvas taint) — NO cache-buster
 function exportProxyUrl(src) {
@@ -677,10 +690,14 @@ async function fetchBestAlchemyImage({ contract, tokenId, host }) {
 // 3) Alchemy metadata fallback (proxy-first, then direct)
 // 4) Alternative IPFS gateway (if IPFS)
 // 5) Mark as missing with user feedback
-async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
+
+async function loadTileImage(tile, img, rawUrl, pass = 0) {
   const contract = tile.dataset.contract || "";
   const tokenId = tile.dataset.tokenId || "";
-  const maxRetries = 2; // Track retry attempts per tile
+  const start = Number(tile.dataset.loadStart || "0") || Date.now();
+  if (!tile.dataset.loadStart) tile.dataset.loadStart = String(start);
+
+  const deadline = start + TILE_TOTAL_BUDGET_MS;
 
   const ipfsPath = getIpfsPath(rawUrl);
   tile.dataset.ipfsPath = ipfsPath || "";
@@ -696,116 +713,95 @@ async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
   const primary = ipfsPath ? ("ipfs://" + ipfsPath) : directNormalized;
   tile.dataset.src = primary;
 
-  // Strategy 1: Alchemy cached URL FIRST (fastest, most reliable - CDN-backed)
-  // Try this BEFORE raw IPFS URLs since Alchemy's CDN is much faster
+  // Helper: stop if we’ve run out of budget
+  const timeLeft = () => deadline - Date.now();
+  const stillHaveTime = (min = 500) => timeLeft() > min;
+
+  // Helper: attempt a load but only if there’s time
+  async function tryLoad(fn) {
+    if (!stillHaveTime()) return false;
+    try {
+      await fn();
+      state.imageLoadState.loaded++;
+      tile.dataset.kind = "loaded";
+      updateImageProgress();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // PASS 0/1/...: we repeat the whole strategy a couple times with backoff
+  // (This is the “real retry”, not just one loop.)
+  if (pass > 0) {
+    // Backoff a bit between passes (prevents stampede + lets gateways recover)
+    const backoff = Math.min(800 * Math.pow(1.6, pass - 1), 3500);
+    await new Promise(r => setTimeout(r, backoff));
+  }
+
+  // Strategy A: Alchemy cached URL (CDN) first
   if (contract && tokenId && tile.dataset.alchemyTried !== "1") {
     tile.dataset.alchemyTried = "1";
     try {
       const metaUrl = await fetchBestAlchemyImage({ contract, tokenId, host: state.host });
-      if (metaUrl && metaUrl !== primary) { // Only use if different from primary
-        // Try Alchemy's cached URL through proxy first
-        try {
-          await loadImgWithLimiter(img, gridProxyUrl(metaUrl), 10000);
-          state.imageLoadState.loaded++;
-          updateImageProgress();
-          tile.dataset.kind = "loaded";
-          tile.dataset.src = metaUrl; // Update to Alchemy URL
-          return true;
-        } catch (e3) {
-          // Try Alchemy URL direct (if HTTPS)
-          if (/^https?:\/\//i.test(metaUrl)) {
-            try {
-              await loadImgNoLimit(img, metaUrl, 8000);
-              state.imageLoadState.loaded++;
-              updateImageProgress();
-              tile.dataset.kind = "loaded";
-              tile.dataset.src = metaUrl;
-              return true;
-            } catch (e4) {
-              // Alchemy URL failed, continue to primary URL
-            }
-          }
+      if (metaUrl && metaUrl !== primary) {
+        // via proxy (canvas-safe + avoids CORS issues)
+        const ok1 = await tryLoad(() => loadImgWithLimiter(img, gridProxyUrl(metaUrl), Math.min(PROXY_TIMEOUT_MS, Math.max(4000, timeLeft()))));
+        if (ok1) { tile.dataset.src = metaUrl; return true; }
+
+        // direct (only if https)
+        if (/^https?:\/\//i.test(metaUrl)) {
+          const ok2 = await tryLoad(() => loadImgNoLimit(img, metaUrl, Math.min(DIRECT_TIMEOUT_MS, Math.max(3500, timeLeft()))));
+          if (ok2) { tile.dataset.src = metaUrl; return true; }
         }
       }
-    } catch (e5) {
-      // Alchemy fetch failed, continue to primary URL
-    }
+    } catch {}
   }
 
-  // Strategy 2: Worker proxy (primary URL, 10s timeout)
-  try {
-    await loadImgWithLimiter(img, gridProxyUrl(primary), 10000);
-    state.imageLoadState.loaded++;
-    updateImageProgress();
-    tile.dataset.kind = "loaded";
-    return true;
-  } catch (e1) {
-    // Strategy 3: Direct URL (if HTTPS, 8s timeout)
-    if (!ipfsPath && /^https?:\/\//i.test(primary)) {
-      try {
-        await loadImgNoLimit(img, primary, 8000);
-        state.imageLoadState.loaded++;
-        updateImageProgress();
-        tile.dataset.kind = "loaded";
-        return true;
-      } catch (e2) {
-        // Continue to next strategy
-      }
-    }
+  // Strategy B: Worker proxy (primary)
+  {
+    const ok = await tryLoad(() => loadImgWithLimiter(img, gridProxyUrl(primary), Math.min(PROXY_TIMEOUT_MS, Math.max(4000, timeLeft()))));
+    if (ok) return true;
   }
 
-  // Strategy 4: Alternative IPFS gateways (if IPFS) - Expanded list
-  if (ipfsPath && retryAttempt < maxRetries) {
-    // Try multiple IPFS gateways in order of reliability
+  // Strategy C: Direct non-IPFS https
+  if (!ipfsPath && /^https?:\/\//i.test(primary)) {
+    const ok = await tryLoad(() => loadImgNoLimit(img, primary, Math.min(DIRECT_TIMEOUT_MS, Math.max(3500, timeLeft()))));
+    if (ok) return true;
+  }
+
+  // Strategy D: Alt gateways for IPFS (proxy then direct)
+  if (ipfsPath) {
     const altGateways = [
-      `https://ipfs.io/ipfs/${ipfsPath}`,
       `https://cloudflare-ipfs.com/ipfs/${ipfsPath}`,
-      `https://gateway.pinata.cloud/ipfs/${ipfsPath}`,
-      `https://nftstorage.link/ipfs/${ipfsPath}`,
       `https://w3s.link/ipfs/${ipfsPath}`,
+      `https://nftstorage.link/ipfs/${ipfsPath}`,
       `https://dweb.link/ipfs/${ipfsPath}`,
-      `https://gateway.ipfs.io/ipfs/${ipfsPath}`,
-      `https://ipfs.filebase.io/ipfs/${ipfsPath}`,
-      `https://cf-ipfs.com/ipfs/${ipfsPath}`
+      `https://cf-ipfs.com/ipfs/${ipfsPath}`,
+      `https://ipfs.io/ipfs/${ipfsPath}`,
+      `https://gateway.pinata.cloud/ipfs/${ipfsPath}`,
     ];
-    
-    // First try through proxy
-    for (const gatewayUrl of altGateways) {
-      try {
-        await loadImgWithLimiter(img, gridProxyUrl(gatewayUrl), 10000);
-        state.imageLoadState.loaded++;
-        updateImageProgress();
-        tile.dataset.kind = "loaded";
-        return true;
-      } catch (e) {
-        // Try next gateway
-      }
+
+    for (const gw of altGateways) {
+      const ok = await tryLoad(() => loadImgWithLimiter(img, gridProxyUrl(gw), Math.min(PROXY_TIMEOUT_MS, Math.max(4000, timeLeft()))));
+      if (ok) return true;
     }
-    
-    // If proxy fails, try direct gateway URLs (bypass proxy)
-    for (const gatewayUrl of altGateways) {
-      try {
-        await loadImgNoLimit(img, gatewayUrl, 8000);
-        state.imageLoadState.loaded++;
-        updateImageProgress();
-        tile.dataset.kind = "loaded";
-        return true;
-      } catch (e) {
-        // Try next gateway
-      }
+    for (const gw of altGateways) {
+      const ok = await tryLoad(() => loadImgNoLimit(img, gw, Math.min(DIRECT_TIMEOUT_MS, Math.max(3500, timeLeft()))));
+      if (ok) return true;
     }
   }
 
-  // All strategies failed
+  // If we still have time budget AND passes remain, do another pass
+  if (stillHaveTime(1200) && pass + 1 < MAX_TILE_PASSES) {
+    return loadTileImage(tile, img, rawUrl, pass + 1);
+  }
+
+  // Out of budget / passes: mark missing
   markMissing(tile, img, rawUrl);
   state.imageLoadState.failed++;
   updateImageProgress();
-  
-  // Log image loading failure (only for significant failures)
-  if (retryAttempt === 0) {
-    addError(new Error(`Failed to load image: ${rawUrl.substring(0, 100)}`), 'Image Loading');
-  }
-  
+  addError(new Error(`Failed to load image after budget: ${String(rawUrl).slice(0, 120)}`), "Image Loading");
   return false;
 }
 
@@ -1393,6 +1389,8 @@ function drawCover(ctx, img, x, y, w, h) {
 
       tile.dataset.kind = "nft";
       tile.dataset.rawUrl = rawUrl;
+delete tile.dataset.loadStart; // reset budget timer for retries
+
       
       // Reset retry attempt counter for this tile
       const retryCount = parseInt(tile.dataset.retryCount || "0");
