@@ -1,38 +1,34 @@
 /**
- * Flex Grid Configuration
- * 
- * SECURITY: API keys should NEVER be hardcoded in production.
- * 
- * For production, use one of these options:
- * 1. Backend proxy (recommended) - Store keys server-side
- * 2. Environment variables - Use build-time env vars
- * 3. Secure config endpoint - Load from authenticated API
- * 
- * For development, you can temporarily set keys here,
- * but they MUST be removed before production deployment.
- * 
- * See FLEX_GRID_SETUP.md for detailed setup instructions.
+ * Flex Grid Configuration (Clean + GitHub Pages friendly)
+ *
+ * Goals:
+ * - Works on GitHub Pages (no backend required)
+ * - Works on localhost (optional local backend proxy)
+ * - Avoids DEV config accidentally running in production
+ *
+ * SECURITY NOTE:
+ * - Any API key in frontend JS can be extracted by someone determined.
+ * - For true security, move Alchemy calls behind your own backend.
  */
 
 // ============================================
-// DEVELOPMENT CONFIG (REMOVE IN PRODUCTION)
+// DEV / LOCAL CONFIG (ONLY USED ON localhost)
 // ============================================
-// ⚠️ WARNING: This is for development only!
-// In production, load from secure endpoint or environment variables
 
 const DEV_CONFIG = {
-  // Set to true to use development config
-  enabled: true, // Enabled for local development
-  
-  // Development API key (will be rotated)
+  // ✅ Only enable DEV_CONFIG on localhost
+  enabled: (typeof window !== "undefined" && window.location.hostname === "localhost"),
+
+  // Development API key (rotate if ever exposed publicly)
   alchemyApiKey: "GYuepn7j7XCslBzxLwO5M",
-  
-  // Image proxy URL
-  // Option 1: Backend proxy (recommended - no DNS issues)
-  workerUrl: "http://localhost:3000/api/proxy/image?url=",
-  
-  // Option 2: Cloudflare Worker (has DNS issues currently)
-  // workerUrl: "https://loflexgrid.littleollienft.workers.dev/img?url="
+
+  // Proxy URL to use for images
+  // - On localhost: you CAN use your local proxy if you run it
+  // - Else: default to Cloudflare Worker
+  workerUrl:
+    (typeof window !== "undefined" && window.location.hostname === "localhost")
+      ? "http://localhost:3000/api/proxy/image?url="
+      : "https://loflexgrid.littleollienft.workers.dev/img?url=",
 };
 
 // ============================================
@@ -40,79 +36,90 @@ const DEV_CONFIG = {
 // ============================================
 
 /**
- * Load configuration securely
- * Tries multiple methods in order of security
+ * Load configuration
+ * Order:
+ * 1) Backend endpoint (ONLY on localhost, if running)
+ * 2) Build-time env vars (if you ever bundle with Vite/etc)
+ * 3) DEV_CONFIG fallback (ONLY on localhost)
+ * 4) Throw error
  */
 async function loadConfig() {
-  // Method 1: Load from secure backend endpoint (RECOMMENDED)
-  // Default to localhost:3000 for development, or use relative path for same-origin
-  const backendUrl = window.location.hostname === 'localhost' 
-    ? 'http://localhost:3000'
-    : ''; // Use relative path in production (same origin)
-  
-  try {
-    const response = await fetch(`${backendUrl}/api/config/flex-grid`, {
-      method: 'GET',
-      credentials: 'same-origin',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (response.ok) {
-      const config = await response.json();
-      if (config.alchemyApiKey && config.workerUrl) {
-        // Only log in development
-        if (window.location.hostname === 'localhost') {
-          console.log('✅ Loaded config from secure backend endpoint');
+  const isBrowser = (typeof window !== "undefined");
+  const hostname = isBrowser ? window.location.hostname : "";
+
+  // --------------------------------------------
+  // Method 1: Secure backend endpoint (localhost only)
+  // --------------------------------------------
+  if (hostname === "localhost") {
+    try {
+      const response = await fetch("http://localhost:3000/api/config/flex-grid", {
+        method: "GET",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (response.ok) {
+        const config = await response.json();
+        if (config?.alchemyApiKey && config?.workerUrl) {
+          console.log("✅ Loaded config from secure backend endpoint");
+          return config;
         }
-        return config;
+      } else {
+        // Non-fatal; continue to next method
+        const errorData = await response.json().catch(() => ({}));
+        console.warn(
+          "⚠️ Backend config returned error:",
+          errorData?.message || `HTTP ${response.status} ${response.statusText}`
+        );
       }
-    } else {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-    }
-  } catch (error) {
-    // Only warn in development
-    if (window.location.hostname === 'localhost') {
-      console.warn('⚠️ Secure config endpoint not available:', error.message);
-      console.warn('   Falling back to DEV_CONFIG...');
-    }
-    // Don't throw - continue to next method (DEV_CONFIG fallback)
-  }
-  
-  // Method 2: Load from environment variables (if using build system)
-  // This would be set at build time, not runtime
-  if (typeof import.meta !== 'undefined' && import.meta.env) {
-    const envKey = import.meta.env.VITE_ALCHEMY_API_KEY;
-    const envWorker = import.meta.env.VITE_WORKER_URL;
-    
-    if (envKey && envWorker) {
-      console.log('✅ Loaded config from environment variables');
-      return {
-        alchemyApiKey: envKey,
-        workerUrl: envWorker
-      };
+    } catch (error) {
+      console.warn("⚠️ Secure config endpoint not available:", error?.message || error);
     }
   }
-  
-  // Method 3: Development fallback (ONLY for local development)
+
+  // --------------------------------------------
+  // Method 2: Build-time environment variables (optional)
+  // --------------------------------------------
+  // Only relevant if you use a bundler like Vite. Safe to keep as optional.
+  try {
+    // eslint-disable-next-line no-undef
+    if (typeof import.meta !== "undefined" && import.meta.env) {
+      // eslint-disable-next-line no-undef
+      const envKey = import.meta.env.VITE_ALCHEMY_API_KEY;
+      // eslint-disable-next-line no-undef
+      const envWorker = import.meta.env.VITE_WORKER_URL;
+
+      if (envKey && envWorker) {
+        console.log("✅ Loaded config from environment variables");
+        return { alchemyApiKey: envKey, workerUrl: envWorker };
+      }
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  // --------------------------------------------
+  // Method 3: DEV_CONFIG fallback (localhost only)
+  // --------------------------------------------
   if (DEV_CONFIG.enabled) {
-    console.warn('⚠️ Using development config - NOT for production!');
+    console.warn("⚠️ Using DEV_CONFIG (localhost only) — NOT for production!");
     return {
       alchemyApiKey: DEV_CONFIG.alchemyApiKey,
-      workerUrl: DEV_CONFIG.workerUrl
+      workerUrl: DEV_CONFIG.workerUrl,
     };
   }
-  
+
+  // --------------------------------------------
   // Method 4: No config available
+  // --------------------------------------------
   throw new Error(
-    'Configuration not available. ' +
-    'Please set up secure config endpoint or environment variables. ' +
-    'See FLEX_GRID_SETUP.md for instructions.'
+    "Configuration not available.\n\n" +
+      "If you're on GitHub Pages / production:\n" +
+      " - Put your Cloudflare Worker URL into config.js, and\n" +
+      " - Provide an alchemyApiKey (note: frontend keys are not truly secret).\n\n" +
+      "If you're on localhost:\n" +
+      " - Run your backend at http://localhost:3000 OR enable DEV_CONFIG.\n"
   );
 }
 
-// Export config loader
 export { loadConfig, DEV_CONFIG };
-
