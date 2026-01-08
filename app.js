@@ -555,8 +555,9 @@ function buildGrid() {
   // ✅ reset limiter each build (prevents queue clog after many grids)
   gridImgLimit = createLimiter(3);
 
-  // ✅ new build id (cache-buster for grid loads)
-  BUILD_ID = Date.now();
+// Only update BUILD_ID when forcing refresh
+if (GRID_FORCE_REFRESH) BUILD_ID = Date.now();
+
 
   // Initialize image loading state tracking
   state.imageLoadState = {
@@ -1259,7 +1260,7 @@ function drawCover(ctx, img, x, y, w, h) {
 }
 
 // ---------- Events + Retry ----------
-(function bindEvents() {
+function bindEvents() {
   // Wallet input hardening
   const walletInput = $("walletInput");
   if (walletInput) {
@@ -1505,7 +1506,11 @@ async function initializeConfig() {
   }
 }
 
-// Initialize config on page load
-initializeConfig();
+window.addEventListener("DOMContentLoaded", () => {
+  bindEvents();
+  initializeConfig();
+  enableButtons();
+});
+
 
 enableButtons(); 
