@@ -1,3 +1,7 @@
+console.log("✅ NEW app.js RUNNING v9999");
+alert("NEW app.js running v9999");
+
+
 /* Little Ollie Flex Grid (SAFE export for file:// + Multi-Wallet)
    - GRID loads via Worker proxy + IPFS gateway fallback
    - Guards against DOUBLE-PROXY
