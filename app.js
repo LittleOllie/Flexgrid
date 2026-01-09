@@ -1,5 +1,3 @@
-console.log("✅ app.js running", new Date().toISOString());
-
 /* Little Ollie Flex Grid (SAFE export for file:// + Multi-Wallet)
    - GRID loads via Worker proxy + IPFS gateway fallback
    - Guards against DOUBLE-PROXY
@@ -1531,6 +1529,12 @@ async function initializeConfig() {
     ALCHEMY_KEY = config.alchemyApiKey;
     IMG_PROXY = config.workerUrl;
     configLoaded = true;
+console.log("✅ configLoaded", {
+  configLoaded,
+  hasAlchemyKey: !!ALCHEMY_KEY,
+  IMG_PROXY
+});
+
     
     enableButtons();
     setStatus("Ready ✅ ➕ Add wallet(s) → 🔍 Load wallet(s) → select collections → 🧩 Build → 📸 Export");
