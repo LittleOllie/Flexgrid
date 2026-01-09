@@ -353,19 +353,21 @@ function syncWatermarkDOMToOneTile() {
     return;
   }
 
-  // Make sure the tile can anchor an absolute watermark
-  if (getComputedStyle(firstTile).position === "static") {
-    firstTile.style.position = "relative";
-  }
+  // ✅ keep watermark in grid overlay (NOT inside tiles)
+  const gridWrap = grid.parentElement; // this is your .gridWrap
+  if (wm.parentElement !== gridWrap) gridWrap.appendChild(wm);
 
-  // Move watermark into the first tile (so it exports as part of that tile visually)
-  if (wm.parentElement !== firstTile) {
-    firstTile.appendChild(wm);
-  }
-
-  // Ensure visible from Build Grid onwards
   wm.style.display = "block";
+
+  // ✅ lock width to first tile so it doesn't run into tile #2
+  const w = firstTile.getBoundingClientRect().width || 0;
+  if (w > 0) {
+    wm.style.left = "2px";
+    wm.style.top = "2px";
+    wm.style.maxWidth = Math.max(70, Math.floor(w - 4)) + "px";
+  }
 }
+
 
 
 
