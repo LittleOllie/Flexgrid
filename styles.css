@@ -348,3 +348,12 @@ h1{ margin:0; font-size: 22px; }
   border-color: rgba(255,221,85,.75) !important;
   box-shadow: 0 0 0 3px rgba(255,221,85,.18) !important;
 }
+/* ✅ Revert collections menu styling (let HTML inline styles win) */
+.collectionList,
+.collectionItem,
+.collectionName,
+.collectionCount,
+.collectionsTop {
+  all: unset;
+}
+
