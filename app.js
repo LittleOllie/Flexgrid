@@ -353,37 +353,39 @@ function syncWatermarkDOMToOneTile() {
     return;
   }
 
-  wm.style.display = "";
+  // Ensure watermark lives INSIDE the first tile
+  if (getComputedStyle(firstTile).position === "static") firstTile.style.position = "relative";
+  if (wm.parentElement !== firstTile) firstTile.appendChild(wm);
 
-  // ensure it lives INSIDE the first tile so it never overlaps tile #2
-  if (getComputedStyle(firstTile).position === "static") {
-    firstTile.style.position = "relative";
-  }
-  if (wm.parentElement !== firstTile) {
-    firstTile.appendChild(wm);
-  }
+  wm.style.display = "block";
+  wm.textContent = "Powered by Little Ollie";
 
-  // fill the whole tile
+  // Top-left badge box
   wm.style.position = "absolute";
-  wm.style.left = "0";
-  wm.style.top = "0";
-  wm.style.right = "0";
-  wm.style.bottom = "0";
-  wm.style.width = "100%";
-  wm.style.height = "100%";
+  wm.style.left = "6px";
+  wm.style.top = "6px";
+  wm.style.right = "auto";
+  wm.style.bottom = "auto";
+  wm.style.width = "auto";
+  wm.style.height = "auto";
 
-  // if wmGrid is text, center it; if it's an image, you can style it similarly
-  wm.style.display = "flex";
-  wm.style.alignItems = "center";
-  wm.style.justifyContent = "center";
+  wm.style.padding = "6px 10px";
+  wm.style.borderRadius = "8px";
+  wm.style.background = "rgba(0,0,0,0.35)";      // transparent rectangle
+  wm.style.border = "1px solid rgba(255,255,255,0.22)";
+  wm.style.boxShadow = "0 6px 16px rgba(0,0,0,0.25)";
+  wm.style.backdropFilter = "blur(2px)";          // optional (works in most modern browsers)
 
-  // big watermark look
+  wm.style.color = "rgba(255,255,255,0.92)";
+  wm.style.fontWeight = "800";
+  wm.style.letterSpacing = "0.2px";
   wm.style.pointerEvents = "none";
-  wm.style.opacity = "0.18";
-  wm.style.fontWeight = "900";
-  wm.style.transform = "rotate(-18deg)";
-  wm.style.textAlign = "center";
-  wm.style.padding = "10px";
+  wm.style.whiteSpace = "nowrap";
+
+  // Auto-scale text to tile size (so it works on any grid)
+  const tileW = firstTile.getBoundingClientRect().width || 200;
+  const fontPx = Math.max(10, Math.min(16, Math.round(tileW * 0.085)));
+  wm.style.fontSize = fontPx + "px";
 }
 
 
@@ -1118,27 +1120,57 @@ function drawPlaceholder(ctx, x, y, w, h, label = "Missing") {
 }
 
 function drawWatermarkAcrossTile(ctx, x, y, w, h) {
-  // Uses wmGrid text if available, else fallback text
-  const wm = document.getElementById("wmGrid");
-  const text = (wm?.textContent || "Little Ollie Studio").trim();
+  const text = "Powered by Little Ollie";
 
   ctx.save();
-  ctx.globalAlpha = 0.18;
 
-  // big, across the whole tile
-  const fontPx = Math.max(18, Math.floor(w * 0.18));
-  ctx.font = `900 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-  ctx.fillStyle = "white";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
+  // badge sizing relative to tile
+  const padX = Math.round(w * 0.05);
+  const padY = Math.round(h * 0.05);
+  const fontPx = Math.max(10, Math.floor(w * 0.09));
 
-  // slight diagonal to feel like a real watermark
-  ctx.translate(x + w / 2, y + h / 2);
-  ctx.rotate(-Math.PI / 10); // ~ -18 degrees
-  ctx.fillText(text, 0, 0, w * 0.95);
+  ctx.font = `800 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+
+  const textW = ctx.measureText(text).width;
+  const boxPadX = Math.round(fontPx * 0.7);
+  const boxPadY = Math.round(fontPx * 0.45);
+
+  const boxW = Math.min(w - padX * 2, Math.round(textW + boxPadX * 2));
+  const boxH = Math.round(fontPx + boxPadY * 2);
+
+  const bx = x + padX;
+  const by = y + padY;
+
+  // rounded rect
+  const r = Math.max(6, Math.round(fontPx * 0.6));
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.lineWidth = Math.max(1, Math.round(w * 0.006));
+
+  ctx.beginPath();
+  ctx.moveTo(bx + r, by);
+  ctx.lineTo(bx + boxW - r, by);
+  ctx.quadraticCurveTo(bx + boxW, by, bx + boxW, by + r);
+  ctx.lineTo(bx + boxW, by + boxH - r);
+  ctx.quadraticCurveTo(bx + boxW, by + boxH, bx + boxW - r, by + boxH);
+  ctx.lineTo(bx + r, by + boxH);
+  ctx.quadraticCurveTo(bx, by + boxH, bx, by + boxH - r);
+  ctx.lineTo(bx, by + r);
+  ctx.quadraticCurveTo(bx, by, bx + r, by);
+  ctx.closePath();
+
+  ctx.fill();
+  ctx.stroke();
+
+  // text
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.fillText(text, bx + boxPadX, by + boxPadY);
 
   ctx.restore();
 }
+
 
 async function saveCanvasPNG(canvas, filename = "little-ollie-grid.png") {
   // Use blob (best quality + memory)
@@ -1229,13 +1261,6 @@ async function exportPNG() {
       const y = Math.round((pad + row * tileSize) * scale);
       const w = Math.round(tileSize * scale);
       const h = Math.round(tileSize * scale);
-
-      // border
-      ctx.save();
-      ctx.strokeStyle = "rgba(255,255,255,0.25)";
-      ctx.lineWidth = borderPx * scale;
-      ctx.strokeRect(x, y, w, h);
-      ctx.restore();
 
       // decide image source
       const kind = tile.dataset.kind || "";
