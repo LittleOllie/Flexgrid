@@ -69,11 +69,6 @@ h1{ margin:0; font-size: 22px; }
   border: 1px solid rgba(255,255,255,.14);
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
 .status{
   font-size: 13px;
   opacity: .9;
@@ -145,22 +140,26 @@ h1{ margin:0; font-size: 22px; }
 .stageTitle{ font-weight: 950; letter-spacing:.2px; }
 .stageMeta{ font-size: 12px; opacity:.85; margin-top: 2px; }
 
+/* ✅ GRID: tiles touch (no faint lines) */
 .grid{
   display:grid;
-  gap: 10px;
-  padding: 14px;
+  gap: 0;                 /* was 10px */
+  padding: 12px;          /* slightly reduced so it still looks neat */
   grid-template-columns: repeat(7, 1fr);
 }
 
+/* ✅ TILE: remove border that caused the faint lines */
 .tile{
   background: rgba(0,0,0,.20);
-  border: 1px solid rgba(255,255,255,.14);
-  border-radius: 14px;
+  border: 0;              /* was 1px solid ... */
+  border-radius: 12px;    /* keep rounded corners; set to 0 for perfect seamless */
   overflow:hidden;
   aspect-ratio: 1 / 1;
   position:relative;
   display:grid;
   place-items:center;
+  margin: 0;
+  outline: none;
 }
 
 .tile img{
@@ -207,15 +206,15 @@ h1{ margin:0; font-size: 22px; }
 /* Mobile niceties */
 @media (max-width: 560px){
   .row.two{ grid-template-columns: 1fr; }
-  .grid{ gap: 8px; padding: 12px; }
+  .grid{ gap: 0; padding: 10px; }  /* ensure still no gaps on mobile */
 }
 
 /* Export preset dropdown spacing on smaller screens */
 @media (max-width: 560px){
   #exportPreset{ width:100%; }
 }
-/* === LO Flex Grid: image loading states === */
 
+/* === LO Flex Grid: image loading states === */
 .tile.loading {
   background: rgba(255,255,255,0.05);
 }
@@ -239,4 +238,3 @@ h1{ margin:0; font-size: 22px; }
 .tile.missing {
   background: rgba(0,0,0,0.25);
 }
-
