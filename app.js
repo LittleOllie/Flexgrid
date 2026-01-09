@@ -353,23 +353,33 @@ function syncWatermarkDOMToOneTile() {
     return;
   }
 
-  // ✅ keep watermark in grid overlay (NOT inside tiles)
-  const gridWrap = grid.parentElement; // this is your .gridWrap
+  // ✅ keep watermark as an overlay (so it doesn't get deleted when grid.innerHTML = "")
+  const gridWrap = grid.parentElement; // .gridWrap
   if (wm.parentElement !== gridWrap) gridWrap.appendChild(wm);
 
   wm.style.display = "block";
+  wm.textContent = "⚡ Powered by Little Ollie Studio";
 
-  // ✅ lock width to first tile so it doesn't run into tile #2
-  const w = firstTile.getBoundingClientRect().width || 0;
-  if (w > 0) {
-    wm.style.left = "2px";
-    wm.style.top = "2px";
-    wm.style.maxWidth = Math.max(70, Math.floor(w - 4)) + "px";
-  }
+  // lock badge to tile #1 width
+  const tileW = firstTile.getBoundingClientRect().width || 0;
+  const maxW = Math.max(70, Math.floor(tileW - 4));
+  wm.style.maxWidth = maxW + "px";
+
+  // base font sizing (roughly scales with tile)
+  const fontPx = Math.max(9, Math.min(14, Math.round(tileW * 0.08)));
+  wm.style.fontSize = fontPx + "px";
+
+  // ✅ scale-to-fit (so full text always stays inside tile width)
+  wm.style.transform = "scale(1)";
+  // let layout settle before measuring
+  requestAnimationFrame(() => {
+    const actualW = wm.scrollWidth || 0;
+    if (actualW > 0) {
+      const scale = Math.min(1, maxW / actualW);
+      wm.style.transform = `scale(${scale})`;
+    }
+  });
 }
-
-
-
 
 // ---------- Wallet list ----------
 function normalizeWallet(w) {
@@ -622,25 +632,24 @@ function buildGrid() {
   }
 
   const nftsWithImages = usedItems.filter((item) => item?.image);
-  state.imageLoadState.total = nftsWithImages.length;
+state.imageLoadState.total = nftsWithImages.length;
 
-  for (let i = 0; i < usedItems.length; i++) grid.appendChild(makeNFTTile(usedItems[i]));
-  const remaining = totalSlots - usedItems.length;
-  for (let j = 0; j < remaining; j++) grid.appendChild(makeFillerTile());
+for (let i = 0; i < usedItems.length; i++) grid.appendChild(makeNFTTile(usedItems[i]));
+const remaining = totalSlots - usedItems.length;
+for (let j = 0; j < remaining; j++) grid.appendChild(makeFillerTile());
+
+const wm = $("wmGrid");
+if (wm) wm.style.display = "block";
 
 requestAnimationFrame(syncWatermarkDOMToOneTile);
 
+if (exportBtn) exportBtn.disabled = false;
 
-  const wm = $("wmGrid");
-  if (wm) wm.style.display = "";
-  syncWatermarkDOMToOneTile();
+if (state.imageLoadState.total > 0) updateImageProgress();
+else setStatus("Grid built ✅ (drag tiles to reorder on desktop)");
 
-  if (exportBtn) exportBtn.disabled = false;
+enableDragDrop();
 
-  if (state.imageLoadState.total > 0) updateImageProgress();
-  else setStatus("Grid built ✅ (drag tiles to reorder on desktop)");
-
-  enableDragDrop();
 }
 
 // ---------- Image loading + fallbacks ----------
