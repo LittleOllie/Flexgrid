@@ -1183,37 +1183,6 @@ async function saveCanvasPNG(canvas, filename = "little-ollie-grid.png") {
   setTimeout(() => URL.revokeObjectURL(url), 8000);
 }
 
-if (navigator.canShare && navigator.canShare({ files: [file] })) {
-  try {
-    // Some browsers require share() to be called without awaiting other tasks.
-    // Even if this throws, we fall back to opening/downloading.
-    navigator.share({ files: [file], title: "Little Ollie Grid" });
-    return;
-  } catch (e) {
-    // continue to fallback
-  }
-}
-
-
-  // Desktop / fallback: blob download
-  const url = URL.createObjectURL(blob);
-  if (isIOS()) {
-    const win = window.open(url, "_blank");
-    if (!win) alert("Popup blocked. Allow popups to save the PNG.");
-    // revoke later
-    setTimeout(() => URL.revokeObjectURL(url), 8000);
-    return;
-  }
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 8000);
-}
-
 async function exportPNG() {
   try {
     if (!configLoaded || !IMG_PROXY) {
