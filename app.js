@@ -378,24 +378,22 @@ wm.textContent = "⚡ Powered by Little Ollie";
 
   wm.style.color = "rgba(255,255,255,0.92)";
   wm.style.fontWeight = "800";
-  wm.style.letterSpacing = "0.2px";
-  wm.style.pointerEvents = "none";
-  wm.style.whiteSpace = "nowrap";
+wm.style.letterSpacing = "0.2px";
+wm.style.pointerEvents = "none";
+wm.style.whiteSpace = "nowrap";
 
-const tileW = firstTile.getBoundingClientRect().width || 200;
-const fontPx = Math.max(11, Math.min(18, Math.round(tileW * 0.095)));
+const wmTileW = firstTile.getBoundingClientRect().width || 200;
+const fontPx = Math.max(11, Math.min(18, Math.round(wmTileW * 0.095)));
+
 wm.style.fontSize = fontPx + "px";
 wm.style.padding = "7px 12px";
 wm.style.maxWidth = "96%";
 wm.style.overflow = "hidden";
 wm.style.textOverflow = "ellipsis";
 wm.style.whiteSpace = "nowrap";
-wm.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji'";
+wm.style.fontFamily =
+  "system-ui, -apple-system, Segoe UI, Roboto, Arial, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji'";
 
-  // Auto-scale text to tile size (so it works on any grid)
-  const tileW = firstTile.getBoundingClientRect().width || 200;
-  const fontPx = Math.max(10, Math.min(16, Math.round(tileW * 0.085)));
-  wm.style.fontSize = fontPx + "px";
 }
 
 
