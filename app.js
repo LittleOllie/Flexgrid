@@ -1120,31 +1120,46 @@ function drawPlaceholder(ctx, x, y, w, h, label = "Missing") {
 }
 
 function drawWatermarkAcrossTile(ctx, x, y, w, h) {
-  const text = "Powered by Little Ollie";
+  const textRaw = "Powered by Little Ollie";
 
   ctx.save();
 
-  // badge sizing relative to tile
+  // placement
   const padX = Math.round(w * 0.05);
   const padY = Math.round(h * 0.05);
-  const fontPx = Math.max(10, Math.floor(w * 0.09));
+  const bx = x + padX;
+  const by = y + padY;
 
+  // font sizing (a bit smaller than before)
+  let fontPx = Math.max(9, Math.floor(w * 0.075)); // was ~0.09
   ctx.font = `800 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
 
-  const textW = ctx.measureText(text).width;
-  const boxPadX = Math.round(fontPx * 0.7);
+  // box padding
+  const boxPadX = Math.round(fontPx * 0.65);
   const boxPadY = Math.round(fontPx * 0.45);
 
-  const boxW = Math.min(w - padX * 2, Math.round(textW + boxPadX * 2));
+  // ✅ fixed max badge width so it never becomes huge
+  const maxBoxW = Math.round(w * 0.88);
+
+  // calculate text + box size
+  let text = textRaw;
+  let textW = ctx.measureText(text).width;
+  let boxW = Math.round(textW + boxPadX * 2);
+
+  // ✅ if too wide, ellipsize to fit inside maxBoxW
+  if (boxW > maxBoxW) {
+    const maxTextW = Math.max(10, maxBoxW - boxPadX * 2);
+    text = ellipsizeToWidth(ctx, textRaw, maxTextW);
+    textW = ctx.measureText(text).width;
+    boxW = Math.round(textW + boxPadX * 2);
+  }
+
   const boxH = Math.round(fontPx + boxPadY * 2);
 
-  const bx = x + padX;
-  const by = y + padY;
-
   // rounded rect
-  const r = Math.max(6, Math.round(fontPx * 0.6));
+  const r = Math.max(6, Math.round(fontPx * 0.55));
   ctx.fillStyle = "rgba(0,0,0,0.35)";
   ctx.strokeStyle = "rgba(255,255,255,0.22)";
   ctx.lineWidth = Math.max(1, Math.round(w * 0.006));
