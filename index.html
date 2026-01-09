@@ -406,6 +406,106 @@
   .actions{ flex-direction: column; align-items: stretch; }
   .actions .btn{ width: 100%; }
 }
+/* =========================================
+   Collections: compact scroll + nicer rows
+   (CSS-only, does NOT affect JS buttons)
+   ========================================= */
+
+/* Make the collections panel more compact overall */
+#controlsPanel.panel{
+  padding: 12px;
+}
+
+/* Keep the top row (search + buttons) tidy */
+.collectionsTop{
+  align-items: center;
+  gap: 10px;
+}
+
+/* ✅ Scroll menu: smaller height + smoother */
+.collectionList{
+  max-height: 220px;     /* was 280px — makes it compact */
+  overflow: auto;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(76,111,255,.12);
+  border: 1px solid rgba(255,255,255,.14);
+}
+
+/* ✅ Optional: make it 2 columns on desktop so it's more compact */
+@media (min-width: 860px){
+  .collectionList{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .collectionItem{
+    margin-bottom: 0 !important; /* since grid uses gap */
+  }
+}
+
+/* Row styling */
+.collectionItem{
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 10px;
+}
+
+/* Put name + count on ONE line nicely */
+.collectionItem > div{
+  min-width: 0;
+}
+
+/* Make name and count sit together */
+.collectionName{
+  display: inline;
+  font-weight: 950;
+  font-size: 13px;
+  line-height: 1.15;
+  margin-right: 8px;
+}
+
+/* ✅ Count becomes a pill badge next to name */
+.collectionCount{
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.28);
+  border: 1px solid rgba(255,255,255,.16);
+  opacity: 1; /* override previous opacity */
+  margin-top: 0;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* Checkbox: slightly nicer */
+.collectionItem input[type="checkbox"]{
+  width: 18px;
+  height: 18px;
+}
+
+/* =========================================
+   Make the lower page keep the “blue vibe”
+   ========================================= */
+
+/* Stage background to match body blue gradient more */
+.stage{
+  background: radial-gradient(circle at top, rgba(109,224,255,.25), rgba(76,111,255,.28)) !important;
+  border-color: rgba(255,255,255,.18);
+}
+
+/* Grid area slightly bluer (instead of grey/black) */
+.grid{
+  background: rgba(76,111,255,.10);
+}
+
+/* Tiles slightly clearer against blue */
+.tile{
+  background: rgba(0,0,0,.12);
+}
+
   </style>
 </head>
 
@@ -649,6 +749,6 @@
     })();
   </script>
 
-<script type="module" src="./app.js?v=20260109-33"></script>
+<script type="module" src="./app.js?v=20260109-34"></script>
 </body>
 </html>
