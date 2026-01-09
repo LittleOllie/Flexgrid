@@ -354,17 +354,38 @@ function syncWatermarkDOMToOneTile() {
   }
 
   wm.style.display = "";
-  wm.style.whiteSpace = "nowrap";
-  wm.style.overflow = "hidden";
-  wm.style.textOverflow = "ellipsis";
 
-  const tileW = firstTile.getBoundingClientRect().width || 0;
-  wm.style.maxWidth = `${Math.max(80, tileW - 8)}px`;
+  // ensure it lives INSIDE the first tile so it never overlaps tile #2
+  if (getComputedStyle(firstTile).position === "static") {
+    firstTile.style.position = "relative";
+  }
+  if (wm.parentElement !== firstTile) {
+    firstTile.appendChild(wm);
+  }
 
-  const s = Math.max(0.62, Math.min(1, tileW / 260));
-  wm.style.transform = `scale(${s})`;
-  wm.style.transformOrigin = "top left";
+  // fill the whole tile
+  wm.style.position = "absolute";
+  wm.style.left = "0";
+  wm.style.top = "0";
+  wm.style.right = "0";
+  wm.style.bottom = "0";
+  wm.style.width = "100%";
+  wm.style.height = "100%";
+
+  // if wmGrid is text, center it; if it's an image, you can style it similarly
+  wm.style.display = "flex";
+  wm.style.alignItems = "center";
+  wm.style.justifyContent = "center";
+
+  // big watermark look
+  wm.style.pointerEvents = "none";
+  wm.style.opacity = "0.18";
+  wm.style.fontWeight = "900";
+  wm.style.transform = "rotate(-18deg)";
+  wm.style.textAlign = "center";
+  wm.style.padding = "10px";
 }
+
 
 // ---------- Wallet list ----------
 function normalizeWallet(w) {
@@ -1052,11 +1073,222 @@ function groupByCollection(nfts) {
 }
 
 // ---------- Export + helpers ----------
-async function exportPNG() {
-  setStatus("Exporting… may take a moment");
-  // (leave your export code as-is in your original file if you prefer)
-  setStatus("Export code unchanged in this fix ✅");
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 }
+
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+async function loadImageWithRetry(src, tries = 2, timeoutMs = 25000) {
+  let lastErr = null;
+
+  for (let i = 0; i < tries; i++) {
+    try {
+      // lightweight timeout wrapper
+      const img = await Promise.race([
+        loadImage(src),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("Image load timeout")), timeoutMs)),
+      ]);
+      return img;
+    } catch (e) {
+      lastErr = e;
+      await sleep(250 + i * 250);
+    }
+  }
+  throw lastErr || new Error("Image failed: " + src);
+}
+
+function drawPlaceholder(ctx, x, y, w, h, label = "Missing") {
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.fillRect(x, y, w, h);
+
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.lineWidth = Math.max(2, Math.floor(w * 0.02));
+  ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  const fontPx = Math.max(14, Math.floor(w * 0.10));
+  ctx.font = `800 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, x + w / 2, y + h / 2);
+  ctx.restore();
+}
+
+function drawWatermarkAcrossTile(ctx, x, y, w, h) {
+  // Uses wmGrid text if available, else fallback text
+  const wm = document.getElementById("wmGrid");
+  const text = (wm?.textContent || "Little Ollie Studio").trim();
+
+  ctx.save();
+  ctx.globalAlpha = 0.18;
+
+  // big, across the whole tile
+  const fontPx = Math.max(18, Math.floor(w * 0.18));
+  ctx.font = `900 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+  ctx.fillStyle = "white";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  // slight diagonal to feel like a real watermark
+  ctx.translate(x + w / 2, y + h / 2);
+  ctx.rotate(-Math.PI / 10); // ~ -18 degrees
+  ctx.fillText(text, 0, 0, w * 0.95);
+
+  ctx.restore();
+}
+
+async function saveCanvasPNG(canvas, filename = "little-ollie-grid.png") {
+  // Prefer blob
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 1.0));
+
+  if (!blob) {
+    // Fallback dataURL
+    const dataUrl = canvas.toDataURL("image/png");
+    if (isIOS()) {
+      const win = window.open(dataUrl, "_blank");
+      if (!win) alert("Popup blocked. Allow popups to save the PNG.");
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    return;
+  }
+
+  // iPhone / iPad: Share Sheet is best
+  const file = new File([blob], filename, { type: "image/png" });
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    await navigator.share({ files: [file], title: "Little Ollie Grid" });
+    return;
+  }
+
+  // Desktop / fallback: blob download
+  const url = URL.createObjectURL(blob);
+  if (isIOS()) {
+    const win = window.open(url, "_blank");
+    if (!win) alert("Popup blocked. Allow popups to save the PNG.");
+    // revoke later
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+    return;
+  }
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 8000);
+}
+
+async function exportPNG() {
+  try {
+    if (!configLoaded || !IMG_PROXY) {
+      setStatus("❌ Export needs IMG proxy configured (workerUrl in config.js).");
+      return;
+    }
+
+    const tiles = Array.from(document.querySelectorAll("#grid .tile"));
+    if (!tiles.length) return setStatus("Nothing to export. Build grid first.");
+
+    setStatus("Exporting… may take a moment");
+
+    const gridEl = $("grid");
+    const cols = getComputedGridCols(gridEl);
+    const rows = Math.ceil(tiles.length / cols);
+
+    // tile size from first tile
+    const rect = tiles[0].getBoundingClientRect();
+    let tileSize = Math.round(rect.width);
+    if (!tileSize || tileSize < 10) tileSize = 140;
+
+    // mobile memory safety
+    const scale = isIOS() ? 1 : 2;
+    const pad = 2;
+    const borderPx = 2;
+
+    const outW = Math.round((cols * tileSize + pad * 2) * scale);
+    const outH = Math.round((rows * tileSize + pad * 2) * scale);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext("2d", { alpha: true });
+
+    ctx.clearRect(0, 0, outW, outH);
+
+    // pre-load images one-by-one to avoid spikes
+    for (let i = 0; i < tiles.length; i++) {
+      const tile = tiles[i];
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+
+      const x = Math.round((pad + col * tileSize) * scale);
+      const y = Math.round((pad + row * tileSize) * scale);
+      const w = Math.round(tileSize * scale);
+      const h = Math.round(tileSize * scale);
+
+      // border
+      ctx.save();
+      ctx.strokeStyle = "rgba(255,255,255,0.25)";
+      ctx.lineWidth = borderPx * scale;
+      ctx.strokeRect(x, y, w, h);
+      ctx.restore();
+
+      // decide image source
+      const kind = tile.dataset.kind || "";
+      const src = tile.dataset.src || ""; // IMPORTANT: should be the chosen “best” URL (ipfs:// or https://)
+
+      if (kind === "loaded" && src) {
+        // export is PROXY-first to avoid tainted canvas
+        const prox = exportProxyUrl(src);
+
+        try {
+          const img = await loadImageWithRetry(prox, 2, 25000);
+          // draw image cover-style
+          const iw = img.naturalWidth || img.width;
+          const ih = img.naturalHeight || img.height;
+
+          const scaleFit = Math.max(w / iw, h / ih);
+          const dw = iw * scaleFit;
+          const dh = ih * scaleFit;
+          const dx = x + (w - dw) / 2;
+          const dy = y + (h - dh) / 2;
+
+          ctx.drawImage(img, dx, dy, dw, dh);
+        } catch (e) {
+          drawPlaceholder(ctx, x, y, w, h, "Missing");
+          addError(e, "Export image load");
+        }
+      } else if (kind === "missing") {
+        drawPlaceholder(ctx, x, y, w, h, "Missing");
+      } else {
+        drawPlaceholder(ctx, x, y, w, h, "LO ⚡");
+      }
+
+      // watermark across the WHOLE FIRST TILE (top-left)
+      if (i === 0) {
+        drawWatermarkAcrossTile(ctx, x, y, w, h);
+      }
+    }
+
+    await saveCanvasPNG(canvas, "little-ollie-grid.png");
+    setStatus("Export complete ✅");
+  } catch (e) {
+    console.error("EXPORT FAILED:", e);
+    addError(e, "Export");
+    setStatus("❌ Export failed (see error log / console)");
+    alert("EXPORT FAILED: " + (e?.message || e));
+  }
+}
+
 
 function getComputedGridCols(gridEl) {
   if (!gridEl) return 1;
