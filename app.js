@@ -1284,56 +1284,58 @@ async function exportPNG() {
 
     ctx.clearRect(0, 0, outW, outH);
 
-    // pre-load images one-by-one to avoid spikes
-    for (let i = 0; i < tiles.length; i++) {
-      const tile = tiles[i];
-      const col = i % cols;
-      const row = Math.floor(i / cols);
+// pre-load images one-by-one to avoid spikes
+for (let i = 0; i < tiles.length; i++) {
+  const tile = tiles[i];
+  const col = i % cols;
+  const row = Math.floor(i / cols);
 
-      const x = Math.round((pad + col * tileSize) * scale);
-      const y = Math.round((pad + row * tileSize) * scale);
-      const w = Math.round(tileSize * scale);
-      const h = Math.round(tileSize * scale);
+  const x = Math.round((pad + col * tileSize) * scale);
+  const y = Math.round((pad + row * tileSize) * scale);
+  const w = Math.round(tileSize * scale);
+  const h = Math.round(tileSize * scale);
 
-      // decide image source
-      const kind = tile.dataset.kind || "";
-      const src = tile.dataset.src || ""; // IMPORTANT: should be the chosen “best” URL (ipfs:// or https://)
+  const kind = tile.dataset.kind || "";
+  const src = tile.dataset.src || "";
 
-      if (kind === "loaded" && src) {
-        // export is PROXY-first to avoid tainted canvas
-        const prox = exportProxyUrl(src);
+  if (kind === "loaded" && src) {
+    const prox = exportProxyUrl(src);
 
-        try {
-          const img = await loadImageWithRetry(prox, 2, 25000);
-          // draw image cover-style
-          const iw = img.naturalWidth || img.width;
-          const ih = img.naturalHeight || img.height;
+    try {
+      const img = await loadImageWithRetry(prox, 2, 25000);
 
-          const scaleFit = Math.max(w / iw, h / ih);
-          const dw = iw * scaleFit;
-          const dh = ih * scaleFit;
-          const dx = x + (w - dw) / 2;
-          const dy = y + (h - dh) / 2;
+      const iw = img.naturalWidth || img.width;
+      const ih = img.naturalHeight || img.height;
 
-          ctx.drawImage(img, dx, dy, dw, dh);
-        } catch (e) {
-          drawPlaceholder(ctx, x, y, w, h, "Missing");
-          addError(e, "Export image load");
-        }
-      } else if (kind === "missing") {
-        drawPlaceholder(ctx, x, y, w, h, "Missing");
-      } else {
-  // leave empty tiles BLANK
+      const scaleFit = Math.max(w / iw, h / ih);
+      const dw = iw * scaleFit;
+      const dh = ih * scaleFit;
+      const dx = x + (w - dw) / 2;
+      const dy = y + (h - dh) / 2;
+
+      ctx.drawImage(img, dx, dy, dw, dh);
+    } catch (e) {
+      drawPlaceholder(ctx, x, y, w, h, "Missing");
+      addError(e, "Export image load");
+    }
+
+  } else if (kind === "missing") {
+    drawPlaceholder(ctx, x, y, w, h, "Missing");
+
+  } else {
+    // EMPTY TILE → leave blank
+  }
+
+  // WATERMARK only on first tile
+  if (i === 0) {
+    drawWatermarkAcrossTile(ctx, x, y, w, h);
+  }
 }
-      }
 
-      // watermark across the WHOLE FIRST TILE (top-left)
-      if (i === 0) {
-        drawWatermarkAcrossTile(ctx, x, y, w, h);
-      }
+// save AFTER loop
+await saveCanvasPNG(canvas, "little-ollie-grid.png");
+setStatus("Export complete ✅");
 
-    await saveCanvasPNG(canvas, "little-ollie-grid.png");
-    setStatus("Export complete ✅");
   } catch (e) {
     console.error("EXPORT FAILED:", e);
     addError(e, "Export");
