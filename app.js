@@ -1331,7 +1331,6 @@ async function exportPNG() {
       if (i === 0) {
         drawWatermarkAcrossTile(ctx, x, y, w, h);
       }
-    }
 
     await saveCanvasPNG(canvas, "little-ollie-grid.png");
     setStatus("Export complete ✅");
