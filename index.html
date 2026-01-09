@@ -337,25 +337,28 @@
   z-index:9999;
   pointer-events:none;
 
-  /* TEXT */
-  font-size:10px;
-  font-weight:800;
-  letter-spacing:.2px;
-  color: rgba(255,255,255,0.95);
-
-  /* ✅ PADDING (THIS IS THE KEY PART) */
-  padding:4px 8px;   /* top/bottom | left/right */
-
-  /* BACKGROUND BADGE */
+  /* badge look */
   background: rgba(0,0,0,0.35);
-  border-radius:8px;
-  border:1px solid rgba(255,255,255,0.22);
-  box-shadow:0 6px 16px rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 10px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.25);
 
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  /* text */
+  color: rgba(255,255,255,0.95);
+  font-weight: 900;
+  letter-spacing: .2px;
+  line-height: 1;
+
+  /* padding behind text */
+  padding: 4px 8px;
+
+  /* keep it tidy */
+  white-space: nowrap;
+  overflow: visible;        /* IMPORTANT: JS will scale-to-fit, so no ellipsis needed */
+  text-overflow: clip;
+  transform-origin: top left;
 }
+
 
     /* Drag visuals */
     .tile.dragging{ opacity:.55; }
@@ -603,6 +606,6 @@
     })();
   </script>
 
-<script type="module" src="./app.js?v=20260109-25"></script>
+<script type="module" src="./app.js?v=20260109-26"></script>
 </body>
 </html>
