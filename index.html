@@ -1,1430 +1,611 @@
-/* Little Ollie Flex Grid (SAFE export for file:// + Multi-Wallet)
-   - GRID loads via Worker proxy + IPFS gateway fallback
-   - Guards against DOUBLE-PROXY
-   - Alchemy metadata fallback per token after image failures
-   - IMPORTANT:
-     - Grid display can fall back to DIRECT urls (for reliability) if Worker fails.
-     - Export stays PROXY-first to keep canvas untainted.
-   - SECURITY: API keys loaded from secure config (see config.js)
-*/
+<!DOCTYPE html>
+<html lang="en">
+<head>
 
-const $ = (id) => document.getElementById(id);
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  base-uri 'self';
+  object-src 'none';
 
-const state = {
-  collections: [],
-  selectedKeys: new Set(),
-  wallets: [],
-  chain: "eth",
-  host: "eth-mainnet.g.alchemy.com",
-};
+  img-src
+    'self'
+    data:
+    blob:
+    https://loflexgrid.littleollienft.workers.dev
+    https://nft-cdn.alchemy.com
+    https://cloudflare-ipfs.com
+    https://ipfs.io
+    https://nftstorage.link
+    https://w3s.link
+    https://dweb.link;
 
-// Configuration (loaded securely - see loadConfig() below)
-let ALCHEMY_KEY = null;
-let IMG_PROXY = null;
-let configLoaded = false;
+  style-src 'self' 'unsafe-inline';
+  script-src 'self' 'unsafe-inline';
+  connect-src
+    'self'
+    https://*.alchemy.com
+    https://loflexgrid.littleollienft.workers.dev;
+">
 
-const ALCHEMY_HOST = {
-  eth: "eth-mainnet.g.alchemy.com",
-  base: "base-mainnet.g.alchemy.com",
-  polygon: "polygon-mainnet.g.alchemy.com",
-  apechain: null,
-};
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <link rel="icon" type="image/png" href="../icons/icon-192.png" />
+  <title>Little Ollie Flex Grid</title>
 
-// ---------- Build cache-buster (GRID only) ----------
-let BUILD_ID = Date.now();
+  <style>
+    *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+    :root{
+      --bg1:#6de0ff; --bg2:#4c6fff;
+      --panel: rgba(0,0,0,.18);
+      --panel2: rgba(0,0,0,.22);
+      --stroke: rgba(255,255,255,.16);
+      --shadow: 0 14px 34px rgba(0,0,0,.35);
 
-// ---------- Image load limiter (prevents Worker/IPFS stampede) ----------
-function createLimiter(max = 3) {
-  let active = 0;
-  const queue = [];
+      --btnYellow:#ffdd55;
+      --btnYellow2:#ffd22e;
+      --btnText:#222;
 
-  const next = () => {
-    if (active >= max || queue.length === 0) return;
-    active++;
+      --muted: rgba(255,255,255,.85);
+      --loBlueLine: rgba(109,224,255,0.70);
 
-    const { fn, resolve, reject } = queue.shift();
-    fn()
-      .then(resolve)
-      .catch(reject)
-      .finally(() => {
-        active--;
-        next();
-      });
-  };
-
-  return (fn) =>
-    new Promise((resolve, reject) => {
-      queue.push({ fn, resolve, reject });
-      next();
-    });
-}
-
-// 3–5 is generally safe. If your Worker gets 502s, keep it low (3).
-let gridImgLimit = createLimiter(3);
-
-// ---------- Image loading tune ----------
-const IMG_LOAD = {
-  gridTimeoutMs: 25000,     // ✅ longer time to load
-  gridDirectTimeoutMs: 20000,
-  retriesPerCandidate: 1,   // extra tries per URL
-  backoffMs: 500,           // wait between attempts
-};
-
-// Prefer reliable gateways first (you can reorder later)
-const IPFS_GATEWAYS = [
-  "https://cloudflare-ipfs.com/ipfs/",
-  "https://nftstorage.link/ipfs/",
-  "https://w3s.link/ipfs/",
-  "https://dweb.link/ipfs/",
-  "https://gateway.pinata.cloud/ipfs/",
-  "https://ipfs.io/ipfs/",
-  "https://ipfs.filebase.io/ipfs/",
-];
-
-function setImgCORS(imgEl, enabled) {
-  try {
-    if (!imgEl) return;
-    if (enabled) {
-      imgEl.crossOrigin = "anonymous";
-    } else {
-      imgEl.removeAttribute("crossorigin");
-      imgEl.crossOrigin = null;
+      /* ✅ Watermark scale (JS updates this) */
+      --wmScale: 1;
     }
-  } catch (_) {}
-}
 
-// ---------- Timeout wrapper for image loading ----------
-function loadImgWithTimeout(imgEl, src, timeout = 25000) {
-  return Promise.race([
-    new Promise((resolve, reject) => {
-      const clean = () => {
-        imgEl.onload = null;
-        imgEl.onerror = null;
-      };
-      imgEl.onload = () => {
-        clean();
-        resolve(true);
-      };
-      imgEl.onerror = () => {
-        clean();
-        reject(new Error("Image failed: " + src));
-      };
-      imgEl.src = "";
-      imgEl.src = src;
-    }),
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Image load timeout")), timeout)
-    ),
-  ]);
-}
+    html,body{ height:100%; margin:0; }
+    body{
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(circle at top, var(--bg1), var(--bg2));
+      color:#fff;
+      display:flex;
+      justify-content:center;
+      align-items:flex-start;
+      padding: 14px 12px 22px;
+      overscroll-behavior:none;
+    }
 
-function loadImgWithLimiter(imgEl, src, timeout = 25000) {
-  return gridImgLimit(() => loadImgWithTimeout(imgEl, src, timeout));
-}
+    .wrap{ width:min(1120px, 98vw); }
 
-// Non-limited (for direct fallback)
-function loadImgNoLimit(imgEl, src, timeout = 20000) {
-  return loadImgWithTimeout(imgEl, src, timeout);
-}
+    .heroHeader{ width:100%; margin:0 0 12px; }
+    .heroHeader img{
+      width:100%;
+      height:auto;
+      display:block;
+      border-radius: 14px;
+      filter: drop-shadow(0 16px 30px rgba(0,0,0,.35));
+    }
 
-// ---------- UI helpers ----------
-const errorLog = {
-  errors: [],
-  maxErrors: 50,
-};
+    .panel{
+      width:100%;
+      background: linear-gradient(180deg, var(--panel2), var(--panel));
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      border-radius: 18px;
+      padding: 14px;
+      margin: 12px 0;
+      backdrop-filter: blur(8px);
+    }
 
-function addError(error, context = "") {
-  const timestamp = new Date().toLocaleTimeString();
-  const errorEntry = {
-    timestamp,
-    message: error?.message || String(error),
-    context,
-    stack: error?.stack,
-    fullError: error,
-  };
+    .lbl{
+      display:block;
+      font-weight: 850;
+      font-size: 12px;
+      letter-spacing:.3px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 2px 0 6px;
+    }
 
-  errorLog.errors.unshift(errorEntry);
-  if (errorLog.errors.length > errorLog.maxErrors) {
-    errorLog.errors = errorLog.errors.slice(0, errorLog.maxErrors);
-  }
+    .row{ margin-bottom: 12px; }
+    .row.two{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 520px){
+      .row.two{ grid-template-columns: 1fr; }
+    }
 
-  updateErrorLogDisplay();
-}
+    .input{
+      width:100%;
+      border-radius: 14px;
+      padding: 12px 12px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(76,111,255,.20);
+      color:#fff;
+      outline:none;
+      font-size: 14px;
+    }
+    .input::placeholder{ color: rgba(255,255,255,.70); }
 
-function updateErrorLogDisplay() {
-  const errorLogEl = $("errorLog");
-  const errorLogContent = $("errorLogContent");
+    /* ✅ iPhone zoom fix: any input/select under 16px causes Safari zoom on focus */
+    @media (max-width: 900px){
+      .input{ font-size: 16px; }
+    }
 
-  if (!errorLogEl || !errorLogContent) return;
+    select.input{
+      appearance:none;
+      background-color: rgba(76,111,255,.20);
+      background-image:
+        linear-gradient(45deg, transparent 50%, rgba(255,255,255,.85) 50%),
+        linear-gradient(135deg, rgba(255,255,255,.85) 50%, transparent 50%);
+      background-position:
+        calc(100% - 18px) calc(1em + 2px),
+        calc(100% - 13px) calc(1em + 2px);
+      background-size: 5px 5px, 5px 5px;
+      background-repeat:no-repeat;
+      padding-right: 32px;
+    }
+    select.input option{
+      background: #4c6fff;
+      color: #fff;
+    }
 
-  if (errorLog.errors.length === 0) {
-    errorLogEl.style.display = "none";
-    return;
-  }
+    .btn{
+      border:0;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-weight: 950;
+      letter-spacing: .2px;
+      background: linear-gradient(180deg, var(--btnYellow), var(--btnYellow2));
+      color: var(--btnText);
+      cursor:pointer;
+      box-shadow: 0 10px 18px rgba(0,0,0,.25);
+      transition: transform .06s ease, opacity .15s ease;
+      user-select:none;
+      white-space: nowrap;
+    }
+    .btn:active{ transform: translateY(1px) scale(.99); }
+    .btn:disabled{ opacity:.55; cursor:not-allowed; transform:none; }
 
-  errorLogEl.style.display = "block";
-  errorLogContent.innerHTML = errorLog.errors
-    .map((err) => {
-      const contextText = err.context
-        ? ` <span style="opacity: 0.7;">[${err.context}]</span>`
-        : "";
-      const stackText =
-        err.stack && window.location.hostname === "localhost"
-          ? `<div style="margin-top: 4px; padding-left: 12px; opacity: 0.6; font-size: 10px;">${err.stack
-              .split("\n")
-              .slice(0, 3)
-              .join("<br>")}</div>`
-          : "";
-      return `
-      <div style="padding: 6px 0; border-bottom: 1px solid rgba(244, 67, 54, 0.2);">
-        <div style="color: #f44336; font-weight: 700;">
-          <span style="opacity: 0.7; font-size: 10px;">[${err.timestamp}]</span>${contextText}
+    .actions{
+      display:flex;
+      gap:10px;
+      flex-wrap: wrap;
+      align-items:center;
+    }
+
+    .status{
+      margin-top: 10px;
+      color: rgba(255,255,255,.95);
+      font-size: 14px;
+      white-space: pre-wrap;
+    }
+
+    /* Multi-wallet UI */
+    .walletTools{
+      display:flex;
+      gap:10px;
+      flex-wrap: wrap;
+      align-items:center;
+      margin-top: 8px;
+    }
+    .walletList{
+      margin-top: 10px;
+      background: rgba(76,111,255,.14);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 14px;
+      padding: 10px;
+    }
+    .walletChip{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding: 10px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.04);
+      margin-bottom: 8px;
+    }
+    .walletChip:last-child{ margin-bottom:0; }
+    .walletAddr{
+      font-weight: 900;
+      font-size: 13px;
+      overflow:hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+    .walletMeta{
+      font-size: 12px;
+      opacity: .9;
+    }
+    .chipBtns{ display:flex; gap:8px; flex:0 0 auto; }
+    .btnSmall{
+      border:0;
+      border-radius: 12px;
+      padding: 8px 10px;
+      font-weight: 950;
+      background: linear-gradient(180deg, var(--btnYellow), var(--btnYellow2));
+      color: var(--btnText);
+      cursor:pointer;
+      box-shadow: 0 10px 18px rgba(0,0,0,.18);
+      white-space: nowrap;
+    }
+
+    /* Collections */
+    .collectionsTop{
+      display:flex;
+      gap:10px;
+      align-items:end;
+      flex-wrap: wrap;
+    }
+    .collectionsTop .searchWrap{
+      flex: 1 1 320px;
+      min-width: 220px;
+    }
+    .collectionsTop .miniBtns{
+      display:flex;
+      gap:10px;
+      flex: 0 0 auto;
+    }
+
+    .collectionList{
+      margin-top: 10px;
+      background: rgba(76,111,255,.14);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 14px;
+      padding: 10px;
+      max-height: 280px;
+      overflow:auto;
+    }
+    .collectionItem{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding: 10px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.04);
+      margin-bottom: 8px;
+    }
+    .collectionItem:last-child{ margin-bottom: 0; }
+    .collectionItem input[type="checkbox"]{
+      width:20px; height:20px;
+      accent-color: var(--btnYellow);
+      cursor:pointer;
+      flex: 0 0 auto;
+    }
+    .collectionName{ font-weight: 900; line-height: 1.15; }
+    .collectionCount{ font-size: 12px; opacity: .88; margin-top: 2px; }
+    .hint{ font-size: 12px; opacity:.9; margin-top: 6px; }
+
+    /* Stage */
+    .stageWrap{ margin-top: 12px; }
+    .stage{
+      position:relative;
+      background: rgba(0,0,0,.18);
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .stageHeader{
+      padding: 10px 12px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      border-bottom: 1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.12);
+    }
+    .stageTitle{ font-weight: 950; letter-spacing: .2px; }
+    .stageMeta{ font-size: 12px; opacity:.95; text-align:right; }
+
+    /* Grid */
+    .gridWrap{ position: relative; }
+    .grid{
+      display:grid;
+      gap:0 !important;
+      background: rgba(0,0,0,.08);
+    }
+    .tile{
+      position:relative;
+      width:100%;
+      aspect-ratio: 1/1;
+      overflow:hidden;
+      border-radius: 0 !important;
+      background: rgba(0,0,0,.10);
+    }
+    .tile img{
+      width:100%;
+      height:100%;
+      object-fit: cover;
+      display:block;
+      border-radius: 0 !important;
+      user-select:none;
+      -webkit-user-drag:none;
+    }
+    .fillerText{
+      width:100%; height:100%;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      font-weight: 950;
+      letter-spacing:.2px;
+      color: rgba(255,255,255,0.92);
+      background: rgba(0,0,0,0.22);
+      font-size: 22px;
+    }
+
+    /* ✅ Watermark */
+    .watermarkGrid{
+      position:absolute;
+      left:2px;          /* tighter corner */
+      top:2px;           /* tighter corner */
+      z-index: 5;
+      pointer-events:none;
+
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+
+      font-size: 10px;
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: .15px;
+
+      padding: 2px 5px;
+      border-radius: 6px;
+
+      background: rgba(0,0,0,0.18);
+      color: rgba(255,255,255,0.95);
+      text-shadow: 0 2px 6px rgba(0,0,0,.55);
+
+      border: 0;
+      backdrop-filter: none;
+
+      transform: scale(var(--wmScale));
+      transform-origin: top left;
+
+      /* ✅ default, JS will override to tile width */
+      max-width: 260px;
+    }
+
+    /* Drag visuals */
+    .tile.dragging{ opacity:.55; }
+    .tile.dropTarget{ outline: 2px solid rgba(255,221,85,0.95); outline-offset:-2px; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+
+    <div class="heroHeader">
+      <img src="./header.png" alt="Little Ollie Header" />
+    </div>
+
+    <section class="panel">
+      <div class="row two">
+
+        <!-- LEFT: Wallets -->
+        <div>
+          <label class="lbl">Add wallet</label>
+
+          <!-- ✅ iPhone-safe input attributes -->
+          <input
+            id="walletInput"
+            class="input"
+            placeholder="Paste wallet address (0x...) then add"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false"
+            inputmode="text"
+          />
+
+          <div class="walletTools">
+            <!-- ✅ button type -->
+            <button id="addWalletBtn" class="btn" type="button">➕ Add wallet</button>
+          </div>
+
+          <div id="walletList" class="walletList" style="display:none;"></div>
+
+          <div class="hint">Add multiple wallets, then load them all together.</div>
         </div>
-        <div style="margin-top: 2px; color: #ffcdd2;">${err.message}</div>
-        ${stackText}
+
+        <!-- RIGHT: Controls -->
+        <div>
+          <label class="lbl">Chain</label>
+          <select id="chainSelect" class="input">
+            <option value="eth" selected>Ethereum</option>
+            <option value="base">Base</option>
+            <option value="polygon">Polygon (Coming Soon)</option>
+            <option value="apechain">ApeChain (Coming Soon)</option>
+            <option value="solana">Solana (Coming Soon)</option>
+          </select>
+
+          <div style="height:10px"></div>
+
+          <label class="lbl">Grid size</label>
+          <select id="gridSize" class="input">
+            <option value="auto" selected>Auto (fit selected NFTs)</option>
+            <option value="9">3×3 (9)</option>
+            <option value="16">4×4 (16)</option>
+            <option value="25">5×5 (25)</option>
+            <option value="49">7×7 (49)</option>
+            <option value="100">10×10 (100)</option>
+            <option value="custom">Custom Rows × Cols…</option>
+          </select>
+
+          <div id="customGridWrap" style="display:none; margin-top:10px;">
+            <label class="lbl">Custom grid</label>
+
+            <div class="row two" style="margin:0;">
+              <div>
+                <label class="lbl" style="margin-top:0;">Columns</label>
+                <input id="customCols" class="input" type="number" min="1" max="50" value="6" placeholder="Cols (e.g. 8)" />
+              </div>
+
+              <div>
+                <label class="lbl" style="margin-top:0;">Rows</label>
+                <input id="customRows" class="input" type="number" min="1" max="50" value="6" placeholder="Rows (e.g. 5)" />
+              </div>
+            </div>
+
+            <div class="hint">Builds a Rows × Columns grid. Export will match this shape.</div>
+          </div>
+
+          <div style="height:10px"></div>
+
+          <label class="lbl">Fill style</label>
+          <select id="mixMode" class="input">
+            <option value="mix" selected>Mix evenly</option>
+            <option value="order">Fill in order</option>
+          </select>
+        </div>
+
       </div>
-    `;
-    })
-    .join("");
-}
 
-function clearErrorLog() {
-  errorLog.errors = [];
-  updateErrorLogDisplay();
-}
+      <div class="row actions" style="margin-top:12px;">
+        <!-- ✅ button types -->
+        <button id="loadBtn" class="btn" type="button" disabled>🔍 Load wallet(s)</button>
+        <button id="buildBtn" class="btn" type="button" disabled>🧩 Build grid</button>
+        <button id="exportBtn" class="btn" type="button" disabled>📸 Export PNG</button>
+<button id="retryBtn" class="btn" type="button">🔄 Retry missing</button>
 
-function showConnectionStatus(connected) {
-  const statusEl = $("connectionStatus");
-  const lightEl = $("connectionLight");
-  const textEl = $("connectionText");
+      </div>
 
-  if (!statusEl) return;
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+        <div id="connectionStatus" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(244, 67, 54, 0.15); border: 1px solid rgba(244, 67, 54, 0.3); border-radius: 8px;">
+          <div id="connectionLight" style="width: 12px; height: 12px; background: #f44336; border-radius: 50%; box-shadow: 0 0 8px rgba(244, 67, 54, 0.6); animation: pulse 2s infinite;"></div>
+          <span id="connectionText" style="font-size: 13px; font-weight: 700; color: #f44336;">Not Connected</span>
+        </div>
+        <div id="status" class="status" style="flex: 1;"></div>
+      </div>
+      
+      <!-- Error Log -->
+      <div id="errorLog" style="display: none; margin-top: 12px; padding: 12px; background: rgba(244, 67, 54, 0.1); border: 1px solid rgba(244, 67, 54, 0.3); border-radius: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+          <span style="font-size: 14px; font-weight: 900; color: #f44336;">⚠️ Error Log</span>
+          <button id="clearErrorLog" style="margin-left: auto; padding: 4px 8px; font-size: 11px; background: rgba(244, 67, 54, 0.2); border: 1px solid rgba(244, 67, 54, 0.4); border-radius: 6px; color: #f44336; cursor: pointer;">Clear</button>
+        </div>
+        <div id="errorLogContent" style="max-height: 200px; overflow-y: auto; font-family: 'Monaco', 'Courier New', monospace; font-size: 11px; line-height: 1.6;">
+          <!-- Errors will be added here -->
+        </div>
+      </div>
+    </section>
 
-  statusEl.style.display = "flex";
+    <section class="panel" id="controlsPanel" style="display:none;">
+      <div class="row">
+        <label class="lbl">Collections</label>
 
-  if (connected) {
-    statusEl.style.background = "rgba(76, 175, 80, 0.15)";
-    statusEl.style.borderColor = "rgba(76, 175, 80, 0.3)";
-    if (lightEl) {
-      lightEl.style.background = "#4CAF50";
-      lightEl.style.boxShadow = "0 0 8px rgba(76, 175, 80, 0.6)";
-    }
-    if (textEl) {
-      textEl.textContent = "Connected";
-      textEl.style.color = "#4CAF50";
-    }
-  } else {
-    statusEl.style.background = "rgba(244, 67, 54, 0.15)";
-    statusEl.style.borderColor = "rgba(244, 67, 54, 0.3)";
-    if (lightEl) {
-      lightEl.style.background = "#f44336";
-      lightEl.style.boxShadow = "0 0 8px rgba(244, 67, 54, 0.6)";
-    }
-    if (textEl) {
-      textEl.textContent = "Not Connected";
-      textEl.style.color = "#f44336";
-    }
-  }
-}
+        <div class="collectionsTop">
+          <div class="searchWrap">
+            <input id="collectionSearch" class="input" placeholder="Search collections..." autocomplete="off" autocapitalize="none" spellcheck="false" />
+            <div class="hint">Select collections to include. (Starts unchecked)</div>
+          </div>
 
-function setStatus(msg) {
-  const el = $("status");
-  if (el) el.textContent = msg || "";
-}
+          <div class="miniBtns">
+            <button class="btn" type="button" id="selectAllBtn">✅ Select all</button>
+            <button class="btn" type="button" id="selectNoneBtn">🚫 Select none</button>
+          </div>
+        </div>
 
-function updateImageProgress() {
-  const { total, loaded, failed, retrying } = state.imageLoadState;
-  if (total === 0) return;
+        <div id="collectionsList" class="collectionList"></div>
+      </div>
+    </section>
 
-  const progress = Math.round((loaded / total) * 100);
-  let statusMsg = `Loading images: ${loaded}/${total} (${progress}%)`;
+    <section class="stageWrap">
+      <div id="stage" class="stage">
+        <div class="stageHeader">
+          <div id="stageTitle" class="stageTitle">Your Flex Grid</div>
+          <div id="stageMeta" class="stageMeta"></div>
+        </div>
 
-  if (failed > 0) statusMsg += ` - ${failed} failed`;
-  if (retrying > 0) statusMsg += ` - ${retrying} retrying...`;
+        <div class="gridWrap">
+          <div id="grid" class="grid"></div>
 
-  setStatus(statusMsg);
-}
+          <!-- ✅ watermark -->
+          <div id="wmGrid" class="watermarkGrid" style="display:none;">⚡ Powered by Little Ollie Studio</div>
+        </div>
+      </div>
+    </section>
 
-function showControlsPanel(show) {
-  const el = $("controlsPanel");
-  if (el) el.style.display = show ? "" : "none";
-}
+  </div>
 
-function enableButtons() {
-  const loadBtn = $("loadBtn");
-  const buildBtn = $("buildBtn");
-  const exportBtn = $("exportBtn");
+  <!-- Collection search filter (unchanged) -->
+  <script>
+    (function(){
+      const $ = (id)=>document.getElementById(id);
+      const list = $("collectionsList");
+      const search = $("collectionSearch");
 
-  const hasWallets = state.wallets.length > 0;
-  if (loadBtn) loadBtn.disabled = !hasWallets;
-  if (buildBtn) buildBtn.disabled = state.selectedKeys.size === 0;
-  if (exportBtn) exportBtn.disabled = true;
-}
+      if (search && list){
+        search.addEventListener("input", () => {
+          const q = search.value.trim().toLowerCase();
+          const items = Array.from(list.children);
+          items.forEach(el => {
+            const txt = (el.innerText || "").toLowerCase();
+            el.style.display = (!q || txt.includes(q)) ? "" : "none";
+          });
+        });
+      }
+    })();
+  </script>
 
-function setGridColumns(cols) {
-  const grid = $("grid");
-  if (grid) grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-}
+  <!-- ✅ always shows/hides custom grid UI correctly -->
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const gridSize = document.getElementById("gridSize");
+      const wrap = document.getElementById("customGridWrap");
+      if(!gridSize || !wrap) return;
 
-function safeText(s) {
-  return (s || "").toString();
-}
-
-// ---------- URL helpers ----------
-function isAlreadyProxied(url) {
-  // ✅ FIX: IMG_PROXY can be null before config loads
-  return typeof url === "string" && !!IMG_PROXY && url.startsWith(IMG_PROXY);
-}
-
-function getIpfsPath(url) {
-  if (!url) return "";
-  const s = String(url).trim();
-
-  if (s.startsWith("ipfs://")) {
-    let p = s.slice("ipfs://".length);
-    p = p.replace(/^ipfs\//, "");
-    return p.replace(/^\/+/, "");
-  }
-
-  try {
-    const u = new URL(s);
-    const idx = u.pathname.indexOf("/ipfs/");
-    if (idx !== -1) {
-      return u.pathname.slice(idx + "/ipfs/".length).replace(/^\/+/, "");
-    }
-  } catch (e) {}
-
-  return "";
-}
-
-function normalizeImageUrl(url) {
-  if (!url) return "";
-  if (isAlreadyProxied(url)) return url;
-
-  const ipfsPath = getIpfsPath(url);
-  if (ipfsPath) return "ipfs://" + ipfsPath;
-
-  try {
-    const u = new URL(String(url));
-    return u.toString();
-  } catch (e) {
-    return String(url);
-  }
-}
-
-function safeProxyUrl(src) {
-  if (!src) return "";
-  if (isAlreadyProxied(src)) return src;
-
-  const direct = normalizeImageUrl(src);
-  if (isAlreadyProxied(direct)) return direct;
-
-  return IMG_PROXY + encodeURIComponent(direct);
-}
-
-function gridProxyUrl(src) {
-  const prox = safeProxyUrl(src);
-  return prox + (prox.includes("?") ? "&" : "?") + "b=" + BUILD_ID;
-}
-
-function exportProxyUrl(src) {
-  return safeProxyUrl(src);
-}
-
-// ---------- Watermark helpers (DOM + Export) ----------
-function ellipsizeToWidth(ctx, text, maxWidth) {
-  if (ctx.measureText(text).width <= maxWidth) return text;
-  const ell = "…";
-  let t = text;
-  while (t.length > 1 && ctx.measureText(t + ell).width > maxWidth) {
-    t = t.slice(0, -1);
-  }
-  return t + ell;
-}
-
-function syncWatermarkDOMToOneTile() {
-  const wm = $("wmGrid");
-  const grid = $("grid");
-  if (!wm || !grid) return;
-
-  const firstTile = grid.querySelector(".tile");
-  if (!firstTile) {
-    wm.style.display = "none";
-    return;
-  }
-
-  // Ensure watermark lives INSIDE the first tile
-  if (getComputedStyle(firstTile).position === "static") firstTile.style.position = "relative";
-  if (wm.parentElement !== firstTile) firstTile.appendChild(wm);
-
-  wm.style.display = "block";
-  wm.textContent = "Powered by Little Ollie";
-
-  // Top-left badge box
-  wm.style.position = "absolute";
-  wm.style.left = "6px";
-  wm.style.top = "6px";
-  wm.style.right = "auto";
-  wm.style.bottom = "auto";
-  wm.style.width = "auto";
-  wm.style.height = "auto";
-
-  wm.style.padding = "6px 10px";
-  wm.style.borderRadius = "8px";
-  wm.style.background = "rgba(0,0,0,0.35)";      // transparent rectangle
-  wm.style.border = "1px solid rgba(255,255,255,0.22)";
-  wm.style.boxShadow = "0 6px 16px rgba(0,0,0,0.25)";
-  wm.style.backdropFilter = "blur(2px)";          // optional (works in most modern browsers)
-
-  wm.style.color = "rgba(255,255,255,0.92)";
-  wm.style.fontWeight = "800";
-  wm.style.letterSpacing = "0.2px";
-  wm.style.pointerEvents = "none";
-  wm.style.whiteSpace = "nowrap";
-
-  // Auto-scale text to tile size (so it works on any grid)
-  const tileW = firstTile.getBoundingClientRect().width || 200;
-  const fontPx = Math.max(10, Math.min(16, Math.round(tileW * 0.085)));
-  wm.style.fontSize = fontPx + "px";
-}
-
-
-// ---------- Wallet list ----------
-function normalizeWallet(w) {
-  return (w || "").trim().replace(/\s+/g, "").toLowerCase();
-}
-
-function addWallet() {
-  const input = $("walletInput");
-  const w = normalizeWallet(input ? input.value : "");
-
-  if (!w) return setStatus("Paste a wallet address first.");
-  if (!/^0x[a-f0-9]{40}$/.test(w))
-    return setStatus("That doesn’t look like a valid 0x wallet address.");
-  if (state.wallets.includes(w)) return setStatus("That wallet is already added.");
-
-  state.wallets.push(w);
-
-  if (input) {
-    input.value = "";
-    input.blur();
-  }
-
-  renderWalletList();
-  enableButtons();
-  setStatus(`Wallet added ✅ (${state.wallets.length} total)`);
-}
-
-function removeWallet(w) {
-  state.wallets = state.wallets.filter((x) => x !== w);
-  renderWalletList();
-  enableButtons();
-  setStatus(`Wallet removed ✅ (${state.wallets.length} remaining)`);
-}
-
-function renderWalletList() {
-  const wrap = $("walletList");
-  if (!wrap) return;
-
-  if (!state.wallets.length) {
-    wrap.style.display = "none";
-    wrap.innerHTML = "";
-    return;
-  }
-
-  wrap.style.display = "";
-  wrap.innerHTML = "";
-
-  state.wallets.forEach((w) => {
-    const row = document.createElement("div");
-    row.className = "walletChip";
-
-    const left = document.createElement("div");
-    left.style.minWidth = "0";
-
-    const addr = document.createElement("div");
-    addr.className = "walletAddr";
-    addr.textContent = w;
-
-    const meta = document.createElement("div");
-    meta.className = "walletMeta";
-    meta.textContent = "Ready to load";
-
-    left.appendChild(addr);
-    left.appendChild(meta);
-
-    const btns = document.createElement("div");
-    btns.className = "chipBtns";
-
-    const rm = document.createElement("button");
-    rm.className = "btnSmall";
-    rm.type = "button";
-    rm.textContent = "🗑 Remove";
-    rm.addEventListener("click", () => removeWallet(w));
-
-    btns.appendChild(rm);
-
-    row.appendChild(left);
-    row.appendChild(btns);
-    wrap.appendChild(row);
-  });
-}
-
-// ---------- Collections ----------
-function renderCollectionsList() {
-  const wrap = $("collectionsList");
-  if (!wrap) return;
-
-  wrap.innerHTML = "";
-
-  state.collections.forEach((c) => {
-    const row = document.createElement("div");
-    row.className = "collectionItem";
-
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = state.selectedKeys.has(c.key);
-
-    checkbox.addEventListener("change", () => {
-      if (checkbox.checked) state.selectedKeys.add(c.key);
-      else state.selectedKeys.delete(c.key);
-
-      const buildBtn = $("buildBtn");
-      const exportBtn = $("exportBtn");
-      if (buildBtn) buildBtn.disabled = state.selectedKeys.size === 0;
-      if (exportBtn) exportBtn.disabled = true;
+      const sync = () => {
+        wrap.style.display = (gridSize.value === "custom") ? "" : "none";
+      };
+      gridSize.addEventListener("change", sync);
+      sync();
     });
+  </script>
 
-    const label = document.createElement("div");
-    label.style.minWidth = "0";
+  <!-- ✅ Watermark auto-scale + lock width to 1 tile (fixes overlap into tile #2) -->
+  <script>
+    (function(){
+      const root = document.documentElement;
+      const grid = document.getElementById("grid");
+      const wm = document.getElementById("wmGrid");
 
-    const name = document.createElement("div");
-    name.className = "collectionName";
-    name.textContent = c.name;
+      if(!grid || !wm) return;
 
-    const count = document.createElement("div");
-    count.className = "collectionCount";
-    count.textContent = `${c.count} owned`;
+      const computeCols = () => {
+        const gtc = getComputedStyle(grid).gridTemplateColumns;
+        if(!gtc) return 0;
+        return gtc.split(" ").filter(Boolean).length;
+      };
 
-    label.appendChild(name);
-    label.appendChild(count);
+      const apply = () => {
+        // scale based on column count
+        const cols = computeCols();
+        if(cols){
+          const scale = Math.max(0.55, Math.min(1, 4 / cols));
+          root.style.setProperty("--wmScale", String(scale));
+        }
 
-    row.appendChild(checkbox);
-    row.appendChild(label);
-    wrap.appendChild(row);
-  });
-}
-
-function setAllCollections(checked) {
-  state.selectedKeys.clear();
-  if (checked) state.collections.forEach((c) => state.selectedKeys.add(c.key));
-  renderCollectionsList();
-
-  const buildBtn = $("buildBtn");
-  const exportBtn = $("exportBtn");
-  if (buildBtn) buildBtn.disabled = state.selectedKeys.size === 0;
-  if (exportBtn) exportBtn.disabled = true;
-}
-
-function getSelectedCollections() {
-  return state.collections.filter((c) => state.selectedKeys.has(c.key));
-}
-
-// ---------- Grid helpers ----------
-function flattenItems(chosen) {
-  const all = [];
-  chosen.forEach((c) => c.items.forEach((it) => all.push({ ...it, sourceKey: c.key })));
-  return all;
-}
-
-function mixEvenly(chosen) {
-  const queues = chosen.map((c) => ({ key: c.key, items: [...c.items] }));
-  const out = [];
-  let alive = true;
-
-  while (alive) {
-    alive = false;
-    for (const q of queues) {
-      if (q.items.length) {
-        alive = true;
-        out.push({ ...q.items.shift(), sourceKey: q.key });
-      }
-    }
-  }
-  return out;
-}
-
-function closestSquareDims(n) {
-  const side = Math.max(1, Math.ceil(Math.sqrt(n)));
-  return { rows: side, cols: side };
-}
-
-function clampInt(v, min, max, fallback) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.round(n)));
-}
-
-function getGridChoice() {
-  const v = $("gridSize")?.value || "auto";
-
-  if (v === "custom") {
-    const cols = clampInt($("customCols")?.value, 2, 50, 6);
-    const rows = clampInt($("customRows")?.value, 2, 50, 6);
-    const cap = rows * cols;
-    return { mode: "fixed", cap, rows, cols };
-  }
-
-  if (v === "auto") return { mode: "auto" };
-
-  const cap = Math.max(1, Number(v));
-  const side = Math.round(Math.sqrt(cap));
-  return { mode: "fixed", cap, rows: side, cols: side };
-}
-
-// ---------- Build grid ----------
-function buildGrid() {
-  gridImgLimit = createLimiter(3);
-  BUILD_ID = Date.now();
-
-  state.imageLoadState = {
-    total: 0,
-    loaded: 0,
-    failed: 0,
-    retrying: 0,
-  };
-
-  const chosen = getSelectedCollections();
-  const exportBtn = $("exportBtn");
-
-  if (!chosen.length) {
-    setStatus("Select at least one collection.");
-    if (exportBtn) exportBtn.disabled = true;
-    return;
-  }
-
-  const mixMode = $("mixMode")?.value || "mix";
-  let items = mixMode === "mix" ? mixEvenly(chosen) : flattenItems(chosen);
-
-  const HARD_CAP = 400;
-  if (items.length > HARD_CAP) items = items.slice(0, HARD_CAP);
-
-  const choice = getGridChoice();
-
-  let rows, cols, totalSlots, usedItems;
-
-  if (choice.mode === "fixed") {
-    rows = choice.rows;
-    cols = choice.cols;
-    totalSlots = choice.cap;
-    usedItems = items.slice(0, totalSlots);
-  } else {
-    const dims = closestSquareDims(items.length);
-    rows = dims.rows;
-    cols = dims.cols;
-    totalSlots = rows * cols;
-    usedItems = items;
-  }
-
-  setGridColumns(cols);
-
-  const grid = $("grid");
-  if (!grid) return;
-  grid.innerHTML = "";
-
-  const stageTitle = $("stageTitle");
-  const stageMeta = $("stageMeta");
-  if (stageTitle) stageTitle.textContent = "Little Ollie Flex Grid";
-  if (stageMeta) {
-    stageMeta.textContent = `${state.wallets.length} wallet(s) • ${chosen.length} collection(s) • ${usedItems.length} NFT(s) • grid ${rows}×${cols}`;
-  }
-
-  const nftsWithImages = usedItems.filter((item) => item?.image);
-  state.imageLoadState.total = nftsWithImages.length;
-
-  for (let i = 0; i < usedItems.length; i++) grid.appendChild(makeNFTTile(usedItems[i]));
-  const remaining = totalSlots - usedItems.length;
-  for (let j = 0; j < remaining; j++) grid.appendChild(makeFillerTile());
-
-  const wm = $("wmGrid");
-  if (wm) wm.style.display = "";
-  syncWatermarkDOMToOneTile();
-
-  if (exportBtn) exportBtn.disabled = false;
-
-  if (state.imageLoadState.total > 0) updateImageProgress();
-  else setStatus("Grid built ✅ (drag tiles to reorder on desktop)");
-
-  enableDragDrop();
-}
-
-// ---------- Image loading + fallbacks ----------
-const MISSING_GRACE_MS = 30000;
-
-function makeMissingInner() {
-  const d = document.createElement("div");
-  d.className = "fillerText";
-  d.textContent = "Missing";
-  d.style.fontSize = "16px";
-  d.style.opacity = "0.92";
-  return d;
-}
-
-function makeFillerInner() {
-  const d = document.createElement("div");
-  d.className = "fillerText";
-  d.textContent = "LO ⚡";
-  return d;
-}
-
-function markMissing(tile, img, rawUrl) {
-  try {
-    if (img && img.parentNode) img.remove();
-  } catch (e) {}
-  tile.dataset.kind = "missing";
-
-  const src = tile.dataset.src || "";
-  if (!tile.querySelector(".fillerText")) tile.appendChild(makeMissingInner());
-
-  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
-    console.warn("❌ Tile missing", {
-      contract: tile.dataset.contract,
-      tokenId: tile.dataset.tokenId,
-      src,
-      rawUrl,
-      ipfsPath: tile.dataset.ipfsPath,
-    });
-  }
-}
-
-async function fetchBestAlchemyImage({ contract, tokenId, host }) {
-  const meta = await fetchAlchemyNFTMetadata({ contract, tokenId, host });
-
-  const image =
-    meta?.image?.cachedUrl ||
-    meta?.image?.pngUrl ||
-    meta?.image?.thumbnailUrl ||
-    meta?.image?.originalUrl ||
-    meta?.rawMetadata?.image ||
-    "";
-
-  return image ? normalizeImageUrl(image) : "";
-}
-
-async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
-  const contract = tile.dataset.contract || "";
-  const tokenId = tile.dataset.tokenId || "";
-
-  const ipfsPath = getIpfsPath(rawUrl);
-  tile.dataset.ipfsPath = ipfsPath || "";
-
-  const directNormalized = normalizeImageUrl(rawUrl);
-  if (!directNormalized) {
-    markMissing(tile, img, rawUrl);
-    state.imageLoadState.failed++;
-    updateImageProgress();
-    return false;
-  }
-
-  const primary = ipfsPath ? "ipfs://" + ipfsPath : directNormalized;
-  tile.dataset.src = primary;
-
-  // Strategy 1: Alchemy cached URL (proxy first)
-  if (contract && tokenId && tile.dataset.alchemyTried !== "1") {
-    tile.dataset.alchemyTried = "1";
-    try {
-      const metaUrl = await fetchBestAlchemyImage({ contract, tokenId, host: state.host });
-      if (metaUrl && metaUrl !== primary) {
-        try {
-          setImgCORS(img, true);
-          await loadImgWithLimiter(img, gridProxyUrl(metaUrl), IMG_LOAD.gridTimeoutMs);
-          state.imageLoadState.loaded++;
-          updateImageProgress();
-          tile.dataset.kind = "loaded";
-          tile.dataset.src = metaUrl;
-          return true;
-        } catch (_) {}
-      }
-    } catch (_) {}
-  }
-
-  // Strategy 2: Worker proxy (primary)
-  try {
-    setImgCORS(img, true);
-    await loadImgWithLimiter(img, gridProxyUrl(primary), IMG_LOAD.gridTimeoutMs);
-    state.imageLoadState.loaded++;
-    updateImageProgress();
-    tile.dataset.kind = "loaded";
-    return true;
-  } catch (e1) {
-    // Strategy 3: Direct (DISPLAY-ONLY) fallback (non-IPFS only)
-    if (!ipfsPath && /^https?:\/\//i.test(primary)) {
-      try {
-        setImgCORS(img, false);
-        await loadImgNoLimit(img, primary, IMG_LOAD.gridDirectTimeoutMs);
-        state.imageLoadState.loaded++;
-        updateImageProgress();
-        tile.dataset.kind = "loaded";
-        return true;
-      } catch (_) {
-        // continue
-      } finally {
-        setImgCORS(img, true);
-      }
-    }
-
-    // Strategy 4: IPFS gateways (via Worker proxy)
-    if (ipfsPath) {
-      const candidates = IPFS_GATEWAYS.map((g) => g + ipfsPath);
-
-      for (const gatewayUrl of candidates) {
-        for (let attempt = 0; attempt <= IMG_LOAD.retriesPerCandidate; attempt++) {
-          try {
-            setImgCORS(img, true);
-            await loadImgWithLimiter(img, gridProxyUrl(gatewayUrl), IMG_LOAD.gridTimeoutMs);
-            state.imageLoadState.loaded++;
-            updateImageProgress();
-            tile.dataset.kind = "loaded";
-            tile.dataset.src = gatewayUrl;
-            return true;
-          } catch (_) {
-            if (attempt < IMG_LOAD.retriesPerCandidate) {
-              await new Promise((r) => setTimeout(r, IMG_LOAD.backoffMs));
-            }
+        // lock watermark max-width to FIRST tile width (prevents overlapping tile #2)
+        const firstTile = grid.querySelector(".tile");
+        if(firstTile){
+          const w = firstTile.getBoundingClientRect().width || 0;
+          if(w > 0){
+            wm.style.left = "2px";
+            wm.style.top = "2px";
+            wm.style.maxWidth = Math.max(70, Math.floor(w - 4)) + "px";
           }
         }
-      }
-    }
-
-    // Grace period before Missing
-    const startedAt = Number(tile.dataset.loadStartedAt || Date.now());
-    const elapsed = Date.now() - startedAt;
-
-    if (elapsed < MISSING_GRACE_MS) {
-      const waitMs = MISSING_GRACE_MS - elapsed;
-      state.imageLoadState.retrying++;
-      updateImageProgress();
-
-      await new Promise((r) => setTimeout(r, waitMs));
-
-      state.imageLoadState.retrying = Math.max(0, state.imageLoadState.retrying - 1);
-      updateImageProgress();
-
-      try {
-        setImgCORS(img, true);
-        await loadImgWithLimiter(img, gridProxyUrl(primary), IMG_LOAD.gridTimeoutMs);
-        state.imageLoadState.loaded++;
-        updateImageProgress();
-        tile.dataset.kind = "loaded";
-        return true;
-      } catch (_) {}
-    }
-
-    markMissing(tile, img, rawUrl);
-    state.imageLoadState.failed++;
-    updateImageProgress();
-
-    if (retryAttempt === 0) {
-      addError(new Error(`Failed to load image: ${String(rawUrl).substring(0, 100)}`), "Image Loading");
-    }
-
-    return false;
-  } // ✅ END catch
-} // ✅ END loadTileImage (THIS WAS MISSING BEFORE)
-
-function makeNFTTile(it) {
-  const tile = document.createElement("div");
-  tile.className = "tile";
-  tile.draggable = true;
-
-  const contract = (it?.contract || it?.contractAddress || it?.sourceKey || "").toLowerCase();
-  const tokenId = (it?.tokenId || "").toString();
-  tile.dataset.contract = contract;
-  tile.dataset.tokenId = tokenId;
-
-  const raw = it?.image || "";
-  tile.dataset.kind = raw ? "nft" : "empty";
-  tile.dataset.alchemyTried = "0";
-
-  const img = document.createElement("img");
-  img.loading = "lazy";
-  img.alt = safeText(it?.name || "NFT");
-  img.referrerPolicy = "no-referrer";
-  img.crossOrigin = "anonymous";
-
-  if (raw) {
-    tile.appendChild(img);
-    tile.dataset.rawUrl = raw;
-    tile.dataset.retryCount = "0";
-    tile.dataset.loadStartedAt = String(Date.now());
-    loadTileImage(tile, img, raw).catch(() => {});
-  } else {
-    tile.dataset.src = "";
-    tile.dataset.kind = "empty";
-    tile.appendChild(makeFillerInner());
-  }
-
-  return tile;
-}
-
-function makeFillerTile() {
-  const tile = document.createElement("div");
-  tile.className = "tile";
-  tile.draggable = true;
-  tile.dataset.src = "";
-  tile.dataset.kind = "empty";
-  tile.appendChild(makeFillerInner());
-  return tile;
-}
-
-// ---------- Drag & drop ----------
-function enableDragDrop() {
-  const grid = $("grid");
-  if (!grid) return;
-
-  const tiles = Array.from(grid.querySelectorAll(".tile"));
-  let dragEl = null;
-
-  tiles.forEach((t) => {
-    t.addEventListener("dragstart", (e) => {
-      dragEl = t;
-      t.classList.add("dragging");
-      e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", "tile");
-    });
-
-    t.addEventListener("dragend", () => {
-      t.classList.remove("dragging");
-      tiles.forEach((x) => x.classList.remove("dropTarget"));
-      dragEl = null;
-    });
-
-    t.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      if (!dragEl || dragEl === t) return;
-      t.classList.add("dropTarget");
-      e.dataTransfer.dropEffect = "move";
-    });
-
-    t.addEventListener("dragleave", () => t.classList.remove("dropTarget"));
-
-    t.addEventListener("drop", (e) => {
-      e.preventDefault();
-      if (!dragEl || dragEl === t) return;
-
-      const a = dragEl;
-      const b = t;
-
-      const aNext = a.nextSibling === b ? a : a.nextSibling;
-      grid.insertBefore(a, b);
-      grid.insertBefore(b, aNext);
-
-      tiles.forEach((x) => x.classList.remove("dropTarget"));
-    });
-  });
-}
-
-// ---------- Wallet load ----------
-async function loadWallets() {
-  const chain = $("chainSelect")?.value || "eth";
-
-  if (chain === "solana") return setStatus("Solana coming soon. For now use ETH or Base.");
-  if (chain === "apechain") return setStatus("ApeChain coming soon. For now use ETH or Base.");
-  if (!state.wallets.length) return setStatus("Add at least one wallet first.");
-
-  if (!configLoaded || !ALCHEMY_KEY) {
-    return setStatus(
-      "⚠️ Configuration not loaded. " +
-        "Please set up secure config (see FLEX_GRID_SETUP.md). " +
-        "For development, enable DEV_CONFIG in config.js"
-    );
-  }
-
-  const host = ALCHEMY_HOST[chain];
-  if (!host) return setStatus("Chain not configured.");
-
-  state.chain = chain;
-  state.host = host;
-
-  try {
-    setStatus(`Loading NFTs… (${state.wallets.length} wallet(s))`);
-
-    const allNfts = [];
-    for (let i = 0; i < state.wallets.length; i++) {
-      const w = state.wallets[i];
-      setStatus(`Loading NFTs… wallet ${i + 1}/${state.wallets.length}`);
-      const nfts = await fetchAlchemyNFTs({ wallet: w, host });
-      allNfts.push(...(nfts || []));
-    }
-
-    const deduped = dedupeNFTs(allNfts);
-    const grouped = groupByCollection(deduped);
-
-    state.collections = grouped;
-    state.selectedKeys = new Set();
-
-    renderCollectionsList();
-    showControlsPanel(true);
-
-    const buildBtn = $("buildBtn");
-    const exportBtn = $("exportBtn");
-    if (buildBtn) buildBtn.disabled = true;
-    if (exportBtn) exportBtn.disabled = true;
-
-    const stageTitle = $("stageTitle");
-    const stageMeta = $("stageMeta");
-    if (stageTitle) stageTitle.textContent = "Wallets loaded";
-    if (stageMeta) stageMeta.textContent = "Select collections, then 🧩 Build grid.";
-
-    setStatus(`Loaded ${state.wallets.length} wallet(s) ✅ Found ${grouped.length} collections`);
-    showConnectionStatus(true);
-  } catch (err) {
-    const errorMsg = err?.message || "Error loading NFTs.";
-    setStatus(`❌ ${errorMsg} Please try again or check your wallet addresses.`);
-    addError(err, "Load Wallets");
-    showConnectionStatus(false);
-  }
-}
-
-function dedupeNFTs(nfts) {
-  const seen = new Set();
-  const out = [];
-  for (const nft of nfts) {
-    const contract = (nft?.contract?.address || "").toLowerCase();
-    const tokenId = (nft?.tokenId || "").toString();
-    const key = `${contract}:${tokenId}`;
-    if (!contract || !tokenId) continue;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(nft);
-  }
-  return out;
-}
-
-async function fetchAlchemyNFTs({ wallet, host }) {
-  const baseUrl = `https://${host}/nft/v3/${ALCHEMY_KEY}/getNFTsForOwner`;
-
-  let pageKey = null;
-  let all = [];
-  const hardCap = 800;
-
-  while (all.length < hardCap) {
-    const url = new URL(baseUrl);
-    url.searchParams.set("owner", wallet);
-    url.searchParams.set("withMetadata", "true");
-    url.searchParams.set("pageSize", "100");
-    if (pageKey) url.searchParams.set("pageKey", pageKey);
-
-    const res = await fetch(url.toString());
-    if (!res.ok) {
-      const errorText = await res.text().catch(() => "");
-      throw new Error(`Alchemy API error (${res.status}): ${errorText.substring(0, 100)}`);
-    }
-
-    const json = await res.json();
-    if (json.error) throw new Error(`Alchemy API error: ${json.error.message || JSON.stringify(json.error)}`);
-
-    all.push(...(json.ownedNfts || []));
-    if (!json.pageKey) break;
-    pageKey = json.pageKey;
-  }
-
-  return all;
-}
-
-async function fetchAlchemyNFTMetadata({ contract, tokenId, host }) {
-  const url = new URL(`https://${host}/nft/v3/${ALCHEMY_KEY}/getNFTMetadata`);
-  url.searchParams.set("contractAddress", contract);
-  url.searchParams.set("tokenId", tokenId);
-  url.searchParams.set("refreshCache", "false");
-
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`Alchemy metadata error (${res.status})`);
-
-  const json = await res.json();
-  if (json.error) throw new Error(`Alchemy metadata error: ${json.error.message || JSON.stringify(json.error)}`);
-  return json;
-}
-
-function groupByCollection(nfts) {
-  const map = new Map();
-
-  for (const nft of nfts) {
-    const contract = (nft?.contract?.address || "unknown").toLowerCase();
-    const colName = nft?.contract?.name || nft?.collection?.name || "Unknown Collection";
-
-    const tokenId = (nft?.tokenId || "").toString();
-    const name = nft?.name || (tokenId ? `#${tokenId}` : "NFT");
-
-    const image =
-      nft?.image?.cachedUrl ||
-      nft?.image?.pngUrl ||
-      nft?.image?.thumbnailUrl ||
-      nft?.image?.originalUrl ||
-      nft?.rawMetadata?.image ||
-      "";
-
-    if (!map.has(contract)) map.set(contract, { key: contract, name: colName, count: 0, items: [] });
-
-    const entry = map.get(contract);
-    entry.count++;
-    entry.items.push({ name, tokenId, contract, image, sourceKey: contract });
-  }
-
-  return [...map.values()].sort((a, b) => b.count - a.count);
-}
-
-// ---------- Export + helpers ----------
-function isIOS() {
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-}
-
-function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
-
-async function loadImageWithRetry(src, tries = 2, timeoutMs = 25000) {
-  let lastErr = null;
-
-  for (let i = 0; i < tries; i++) {
-    try {
-      // lightweight timeout wrapper
-      const img = await Promise.race([
-        loadImage(src),
-        new Promise((_, rej) => setTimeout(() => rej(new Error("Image load timeout")), timeoutMs)),
-      ]);
-      return img;
-    } catch (e) {
-      lastErr = e;
-      await sleep(250 + i * 250);
-    }
-  }
-  throw lastErr || new Error("Image failed: " + src);
-}
-
-function drawPlaceholder(ctx, x, y, w, h, label = "Missing") {
-  ctx.save();
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = "rgba(0,0,0,0.25)";
-  ctx.fillRect(x, y, w, h);
-
-  ctx.strokeStyle = "rgba(255,255,255,0.35)";
-  ctx.lineWidth = Math.max(2, Math.floor(w * 0.02));
-  ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
-
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
-  const fontPx = Math.max(14, Math.floor(w * 0.10));
-  ctx.font = `800 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, x + w / 2, y + h / 2);
-  ctx.restore();
-}
-
-function drawWatermarkAcrossTile(ctx, x, y, w, h) {
-  const text = "Powered by Little Ollie";
-
-  ctx.save();
-
-  // badge sizing relative to tile
-  const padX = Math.round(w * 0.05);
-  const padY = Math.round(h * 0.05);
-  const fontPx = Math.max(10, Math.floor(w * 0.09));
-
-  ctx.font = `800 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
-
-  const textW = ctx.measureText(text).width;
-  const boxPadX = Math.round(fontPx * 0.7);
-  const boxPadY = Math.round(fontPx * 0.45);
-
-  const boxW = Math.min(w - padX * 2, Math.round(textW + boxPadX * 2));
-  const boxH = Math.round(fontPx + boxPadY * 2);
-
-  const bx = x + padX;
-  const by = y + padY;
-
-  // rounded rect
-  const r = Math.max(6, Math.round(fontPx * 0.6));
-  ctx.fillStyle = "rgba(0,0,0,0.35)";
-  ctx.strokeStyle = "rgba(255,255,255,0.22)";
-  ctx.lineWidth = Math.max(1, Math.round(w * 0.006));
-
-  ctx.beginPath();
-  ctx.moveTo(bx + r, by);
-  ctx.lineTo(bx + boxW - r, by);
-  ctx.quadraticCurveTo(bx + boxW, by, bx + boxW, by + r);
-  ctx.lineTo(bx + boxW, by + boxH - r);
-  ctx.quadraticCurveTo(bx + boxW, by + boxH, bx + boxW - r, by + boxH);
-  ctx.lineTo(bx + r, by + boxH);
-  ctx.quadraticCurveTo(bx, by + boxH, bx, by + boxH - r);
-  ctx.lineTo(bx, by + r);
-  ctx.quadraticCurveTo(bx, by, bx + r, by);
-  ctx.closePath();
-
-  ctx.fill();
-  ctx.stroke();
-
-  // text
-  ctx.fillStyle = "rgba(255,255,255,0.92)";
-  ctx.fillText(text, bx + boxPadX, by + boxPadY);
-
-  ctx.restore();
-}
-
-
-async function saveCanvasPNG(canvas, filename = "little-ollie-grid.png") {
-  // Use blob (best quality + memory)
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 1.0));
-
-  // If blob fails, fallback to dataURL
-  if (!blob) {
-    const dataUrl = canvas.toDataURL("image/png");
-    if (isIOS()) {
-      const win = window.open(dataUrl, "_blank");
-      if (!win) alert("Popup blocked. Allow popups to save the PNG.");
-      return;
-    }
-    const a = document.createElement("a");
-    a.href = dataUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    return;
-  }
-
-  // ✅ iPhone/iPad: open in new tab so user can long-press → Save Image
-  if (isIOS()) {
-    const url = URL.createObjectURL(blob);
-    const win = window.open(url, "_blank");
-    if (!win) {
-      alert("Popup blocked. Allow popups to save the PNG.");
-    }
-    setTimeout(() => URL.revokeObjectURL(url), 8000);
-    return;
-  }
-
-  // ✅ Desktop: download normally
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 8000);
-}
-
-async function exportPNG() {
-  try {
-    if (!configLoaded || !IMG_PROXY) {
-      setStatus("❌ Export needs IMG proxy configured (workerUrl in config.js).");
-      return;
-    }
-
-    const tiles = Array.from(document.querySelectorAll("#grid .tile"));
-    if (!tiles.length) return setStatus("Nothing to export. Build grid first.");
-
-    setStatus("Exporting… may take a moment");
-
-    const gridEl = $("grid");
-    const cols = getComputedGridCols(gridEl);
-    const rows = Math.ceil(tiles.length / cols);
-
-    // tile size from first tile
-    const rect = tiles[0].getBoundingClientRect();
-    let tileSize = Math.round(rect.width);
-    if (!tileSize || tileSize < 10) tileSize = 140;
-
-    // mobile memory safety
-    const scale = isIOS() ? 1 : 2;
-    const pad = 2;
-    const borderPx = 2;
-
-    const outW = Math.round((cols * tileSize + pad * 2) * scale);
-    const outH = Math.round((rows * tileSize + pad * 2) * scale);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = outW;
-    canvas.height = outH;
-    const ctx = canvas.getContext("2d", { alpha: true });
-
-    ctx.clearRect(0, 0, outW, outH);
-
-    // pre-load images one-by-one to avoid spikes
-    for (let i = 0; i < tiles.length; i++) {
-      const tile = tiles[i];
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-
-      const x = Math.round((pad + col * tileSize) * scale);
-      const y = Math.round((pad + row * tileSize) * scale);
-      const w = Math.round(tileSize * scale);
-      const h = Math.round(tileSize * scale);
-
-      // decide image source
-      const kind = tile.dataset.kind || "";
-      const src = tile.dataset.src || ""; // IMPORTANT: should be the chosen “best” URL (ipfs:// or https://)
-
-      if (kind === "loaded" && src) {
-        // export is PROXY-first to avoid tainted canvas
-        const prox = exportProxyUrl(src);
-
-        try {
-          const img = await loadImageWithRetry(prox, 2, 25000);
-          // draw image cover-style
-          const iw = img.naturalWidth || img.width;
-          const ih = img.naturalHeight || img.height;
-
-          const scaleFit = Math.max(w / iw, h / ih);
-          const dw = iw * scaleFit;
-          const dh = ih * scaleFit;
-          const dx = x + (w - dw) / 2;
-          const dy = y + (h - dh) / 2;
-
-          ctx.drawImage(img, dx, dy, dw, dh);
-        } catch (e) {
-          drawPlaceholder(ctx, x, y, w, h, "Missing");
-          addError(e, "Export image load");
-        }
-      } else if (kind === "missing") {
-        drawPlaceholder(ctx, x, y, w, h, "Missing");
-      } else {
-        drawPlaceholder(ctx, x, y, w, h, "LO ⚡");
-      }
-
-      // watermark across the WHOLE FIRST TILE (top-left)
-      if (i === 0) {
-        drawWatermarkAcrossTile(ctx, x, y, w, h);
-      }
-    }
-
-    await saveCanvasPNG(canvas, "little-ollie-grid.png");
-    setStatus("Export complete ✅");
-  } catch (e) {
-    console.error("EXPORT FAILED:", e);
-    addError(e, "Export");
-    setStatus("❌ Export failed (see error log / console)");
-    alert("EXPORT FAILED: " + (e?.message || e));
-  }
-}
-
-
-function getComputedGridCols(gridEl) {
-  if (!gridEl) return 1;
-  const cs = window.getComputedStyle(gridEl);
-  const tmpl = cs.gridTemplateColumns || "";
-
-  const m = tmpl.match(/repeat\((\d+),/);
-  if (m) return Math.max(1, parseInt(m[1], 10));
-
-  const parts = tmpl.split(" ").filter(Boolean);
-  return Math.max(1, parts.length);
-}
-
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.referrerPolicy = "no-referrer";
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
-}
-
-// ---------- Events + Retry ----------
-(function bindEvents() {
-  const walletInput = $("walletInput");
-  if (walletInput) {
-    walletInput.autocapitalize = "none";
-    walletInput.autocomplete = "off";
-    walletInput.spellcheck = false;
-    walletInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        addWallet();
-      }
-    });
-  }
-
-  const addBtn = $("addWalletBtn");
-  if (addBtn) {
-    addBtn.type = "button";
-    let lastFire = 0;
-
-    const handler = (e) => {
-      try { e.preventDefault(); } catch {}
-      const now = Date.now();
-      if (now - lastFire < 350) return;
-      lastFire = now;
-      addWallet();
-    };
-
-    if (window.PointerEvent) addBtn.addEventListener("pointerup", handler, { passive: false });
-    else {
-      addBtn.addEventListener("click", handler, { passive: false });
-      addBtn.addEventListener("touchend", handler, { passive: false });
-    }
-  }
-
-  const loadBtn = $("loadBtn");
-  const buildBtn = $("buildBtn");
-  const exportBtn = $("exportBtn");
-  if (loadBtn) loadBtn.addEventListener("click", loadWallets);
-  if (buildBtn) buildBtn.addEventListener("click", buildGrid);
-  if (exportBtn) exportBtn.addEventListener("click", exportPNG);
-
-  window.addEventListener("resize", syncWatermarkDOMToOneTile);
-  window.addEventListener("orientationchange", syncWatermarkDOMToOneTile);
-})();
-
-// Load configuration securely
-async function initializeConfig() {
-  try {
-    const { loadConfig } = await import("./config.js");
-    const config = await loadConfig();
-
-    ALCHEMY_KEY = config.alchemyApiKey;
-    IMG_PROXY = config.workerUrl;
-    configLoaded = true;
-
-    console.log("✅ configLoaded", {
-      configLoaded,
-      hasAlchemyKey: !!ALCHEMY_KEY,
-      IMG_PROXY,
-    });
-
-    enableButtons();
-    setStatus("Ready ✅ ➕ Add wallet(s) → 🔍 Load wallet(s) → select collections → 🧩 Build → 📸 Export");
-    showConnectionStatus(false);
-  } catch (error) {
-    const statusEl = $("status");
-    if (statusEl) {
-      statusEl.innerHTML = `
-        <div style="color: #ff6b6b; font-weight: 900; margin-bottom: 8px;">
-          ⚠️ Configuration Error
-        </div>
-        <div style="margin-bottom: 8px;">
-          ${error.message}
-        </div>
-        <div style="font-size: 12px; opacity: 0.9;">
-          See <strong>FLEX_GRID_SETUP.md</strong> for setup instructions.
-        </div>
-      `;
-    }
-    addError(error, "Config Loading");
-
-    const loadBtn = $("loadBtn");
-    const buildBtn = $("buildBtn");
-    const exportBtn = $("exportBtn");
-    if (loadBtn) loadBtn.disabled = true;
-    if (buildBtn) buildBtn.disabled = true;
-    if (exportBtn) exportBtn.disabled = true;
-
-    showConnectionStatus(false);
-  }
-}
-
-initializeConfig();
-enableButtons();
+      };
+
+      // watch when tiles are added/removed
+      const mo = new MutationObserver(() => requestAnimationFrame(apply));
+      mo.observe(grid, { childList:true, subtree:false });
+
+      // also on resize/orientation
+      window.addEventListener("resize", () => requestAnimationFrame(apply));
+      window.addEventListener("orientationchange", () => requestAnimationFrame(apply));
+
+      requestAnimationFrame(apply);
+    })();
+  </script>
+
+<script type="module" src="./app.js?v=20260109-9"></script>
+</body>
+</html>
