@@ -1323,7 +1323,6 @@ async function exportPNG() {
       } else if (kind === "missing") {
         drawPlaceholder(ctx, x, y, w, h, "Missing");
       } else {
-} else {
   // leave empty tiles BLANK
 }
       }
