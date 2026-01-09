@@ -330,38 +330,21 @@
     }
 
     /* ✅ Watermark */
-    .watermarkGrid{
-      position:absolute;
-      left:2px;          /* tighter corner */
-      top:2px;           /* tighter corner */
-      z-index: 9999;
-      pointer-events:none;
+.watermarkGrid{
+  position:absolute;
+  left:2px;
+  top:2px;
+  z-index:9999;
+  pointer-events:none;
 
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+  font-size:8px;
+  padding:1px 4px;
 
-      font-size: 10px;
-      line-height: 1;
-      font-weight: 900;
-      letter-spacing: .15px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
 
-      padding: 2px 5px;
-      border-radius: 6px;
-
-      background: rgba(0,0,0,0.18);
-      color: rgba(255,255,255,0.95);
-      text-shadow: 0 2px 6px rgba(0,0,0,.55);
-
-      border: 0;
-      backdrop-filter: none;
-
-      transform: scale(var(--wmScale));
-      transform-origin: top left;
-
-      /* ✅ default, JS will override to tile width */
-      max-width: 260px;
-    }
 
     /* Drag visuals */
     .tile.dragging{ opacity:.55; }
@@ -609,6 +592,6 @@
     })();
   </script>
 
-<script type="module" src="./app.js?v=20260109-19"></script>
+<script type="module" src="./app.js?v=20260109-20"></script>
 </body>
 </html>
