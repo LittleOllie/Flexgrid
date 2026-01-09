@@ -1,3 +1,5 @@
+console.log("✅ app.js running", new Date().toISOString());
+
 /* Little Ollie Flex Grid (SAFE export for file:// + Multi-Wallet)
    - GRID loads via Worker proxy + IPFS gateway fallback
    - Guards against DOUBLE-PROXY
