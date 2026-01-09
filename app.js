@@ -358,7 +358,7 @@ function syncWatermarkDOMToOneTile() {
   if (wm.parentElement !== firstTile) firstTile.appendChild(wm);
 
   wm.style.display = "block";
-  wm.textContent = "Powered by Little Ollie";
+wm.textContent = "⚡Powered by Little Ollie⚡";
 
   // Top-left badge box
   wm.style.position = "absolute";
@@ -381,6 +381,11 @@ function syncWatermarkDOMToOneTile() {
   wm.style.letterSpacing = "0.2px";
   wm.style.pointerEvents = "none";
   wm.style.whiteSpace = "nowrap";
+
+wm.style.maxWidth = "92%";
+wm.style.overflow = "hidden";
+wm.style.textOverflow = "ellipsis";
+wm.style.whiteSpace = "nowrap";
 
   // Auto-scale text to tile size (so it works on any grid)
   const tileW = firstTile.getBoundingClientRect().width || 200;
@@ -1120,7 +1125,7 @@ function drawPlaceholder(ctx, x, y, w, h, label = "Missing") {
 }
 
 function drawWatermarkAcrossTile(ctx, x, y, w, h) {
-  const textRaw = "Powered by Little Ollie";
+  const textRaw = "⚡ Powered by Little Ollie";
 
   ctx.save();
 
@@ -1130,36 +1135,39 @@ function drawWatermarkAcrossTile(ctx, x, y, w, h) {
   const bx = x + padX;
   const by = y + padY;
 
-  // font sizing (a bit smaller than before)
-  let fontPx = Math.max(9, Math.floor(w * 0.075)); // was ~0.09
-  ctx.font = `800 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+  // badge sizing
+  const maxBoxW = Math.round(w * 0.86);          // keep it comfortably inside tile
+  let fontPx = Math.max(9, Math.floor(w * 0.075)); // starting font size
+  const minFontPx = 9;
+
+  // a bit more padding so text never kisses rounded corners
+  const padInsideX = () => Math.round(fontPx * 0.85);
+  const padInsideY = () => Math.round(fontPx * 0.55);
+
+  // choose a font size that fits inside maxBoxW
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
 
-  // box padding
-  const boxPadX = Math.round(fontPx * 0.65);
-  const boxPadY = Math.round(fontPx * 0.45);
-
-  // ✅ fixed max badge width so it never becomes huge
-  const maxBoxW = Math.round(w * 0.88);
-
-  // calculate text + box size
   let text = textRaw;
-  let textW = ctx.measureText(text).width;
-  let boxW = Math.round(textW + boxPadX * 2);
-
-  // ✅ if too wide, ellipsize to fit inside maxBoxW
-  if (boxW > maxBoxW) {
-    const maxTextW = Math.max(10, maxBoxW - boxPadX * 2);
-    text = ellipsizeToWidth(ctx, textRaw, maxTextW);
-    textW = ctx.measureText(text).width;
-    boxW = Math.round(textW + boxPadX * 2);
+  while (fontPx > minFontPx) {
+    ctx.font = `900 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+    const textW = ctx.measureText(text).width;
+    const boxW = Math.round(textW + padInsideX() * 2);
+    if (boxW <= maxBoxW) break;
+    fontPx--;
   }
 
+  ctx.font = `900 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+  const textW = ctx.measureText(text).width;
+
+  const boxPadX = padInsideX();
+  const boxPadY = padInsideY();
+
+  const boxW = Math.min(maxBoxW, Math.round(textW + boxPadX * 2));
   const boxH = Math.round(fontPx + boxPadY * 2);
 
   // rounded rect
-  const r = Math.max(6, Math.round(fontPx * 0.55));
+  const r = Math.max(7, Math.round(fontPx * 0.7));
   ctx.fillStyle = "rgba(0,0,0,0.35)";
   ctx.strokeStyle = "rgba(255,255,255,0.22)";
   ctx.lineWidth = Math.max(1, Math.round(w * 0.006));
@@ -1179,7 +1187,7 @@ function drawWatermarkAcrossTile(ctx, x, y, w, h) {
   ctx.fill();
   ctx.stroke();
 
-  // text
+  // text (slightly inset so it never touches the rounded edges)
   ctx.fillStyle = "rgba(255,255,255,0.92)";
   ctx.fillText(text, bx + boxPadX, by + boxPadY);
 
