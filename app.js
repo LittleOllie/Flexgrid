@@ -1189,11 +1189,11 @@ function drawWatermarkAcrossTile(ctx, x, y, w, h) {
   ctx.fill();
   ctx.stroke();
 
-  // ✅ draw bolt icon (guaranteed)
-  ctx.fillStyle = "rgba(255,255,255,0.92)";
-  const boltX = bx + boxPadX;
-  const boltY = by + boxPadY + Math.round((fontPx - boltSize) * 0.15);
-  drawLightningIcon(ctx, boltX, boltY, boltSize);
+// ⚡ draw yellow emoji bolt
+ctx.font = `900 ${boltSize}px ${fontStack}`;
+ctx.fillStyle = "#FFD400"; // emoji yellow
+ctx.fillText("⚡", bx + boxPadX, by + boxPadY);
+
 
   // text
   const textX = boltX + boltSize + boltGap;
@@ -1321,7 +1321,9 @@ async function exportPNG() {
       } else if (kind === "missing") {
         drawPlaceholder(ctx, x, y, w, h, "Missing");
       } else {
-        drawPlaceholder(ctx, x, y, w, h, "LO ⚡");
+} else {
+  // leave empty tiles BLANK
+}
       }
 
       // watermark across the WHOLE FIRST TILE (top-left)
