@@ -353,30 +353,55 @@ function syncWatermarkDOMToOneTile() {
     return;
   }
 
-  // ✅ keep watermark as an overlay (so it doesn't get deleted when grid.innerHTML = "")
+  // keep watermark as overlay (survives rebuild)
   const gridWrap = grid.parentElement; // .gridWrap
   if (wm.parentElement !== gridWrap) gridWrap.appendChild(wm);
 
   wm.style.display = "block";
   wm.textContent = "⚡ Powered by Little Ollie Studio";
 
-  // lock badge to tile #1 width
+  // badge base styling (always)
+  wm.style.position = "absolute";
+  wm.style.left = "2px";
+  wm.style.top = "2px";
+  wm.style.zIndex = "9999";
+  wm.style.pointerEvents = "none";
+
+  wm.style.background = "rgba(0,0,0,0.35)";
+  wm.style.border = "1px solid rgba(255,255,255,0.22)";
+  wm.style.borderRadius = "10px";
+  wm.style.boxShadow = "0 6px 16px rgba(0,0,0,0.25)";
+
+  wm.style.color = "rgba(255,255,255,0.95)";
+  wm.style.fontWeight = "900";
+  wm.style.letterSpacing = ".2px";
+  wm.style.lineHeight = "1";
+  wm.style.whiteSpace = "nowrap";
+
+  // lock to tile width
   const tileW = firstTile.getBoundingClientRect().width || 0;
   const maxW = Math.max(70, Math.floor(tileW - 4));
   wm.style.maxWidth = maxW + "px";
 
-  // base font sizing (roughly scales with tile)
+  // ✅ compute font + padding from tile size (so they always match)
   const fontPx = Math.max(9, Math.min(14, Math.round(tileW * 0.08)));
-  wm.style.fontSize = fontPx + "px";
+  const padY = Math.max(2, Math.round(fontPx * 0.45));
+  const padX = Math.max(4, Math.round(fontPx * 0.85));
 
-  // ✅ scale-to-fit (so full text always stays inside tile width)
-  wm.style.transform = "scale(1)";
-  // let layout settle before measuring
+  wm.style.fontSize = fontPx + "px";
+  wm.style.padding = `${padY}px ${padX}px`;
+
+  // ✅ if still too wide, gently shrink font + padding together
   requestAnimationFrame(() => {
-    const actualW = wm.scrollWidth || 0;
-    if (actualW > 0) {
-      const scale = Math.min(1, maxW / actualW);
-      wm.style.transform = `scale(${scale})`;
+    const wNow = wm.getBoundingClientRect().width || 0;
+    if (wNow > maxW) {
+      const ratio = maxW / wNow;
+      const newFont = Math.max(8, Math.floor(fontPx * ratio));
+      const newPadY = Math.max(2, Math.round(newFont * 0.45));
+      const newPadX = Math.max(4, Math.round(newFont * 0.85));
+
+      wm.style.fontSize = newFont + "px";
+      wm.style.padding = `${newPadY}px ${newPadX}px`;
     }
   });
 }
