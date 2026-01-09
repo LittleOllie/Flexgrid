@@ -343,8 +343,8 @@ function ellipsizeToWidth(ctx, text, maxWidth) {
 }
 
 function syncWatermarkDOMToOneTile() {
-  const wm = $("wmGrid");
-  const grid = $("grid");
+  const wm = document.getElementById("wmGrid");
+  const grid = document.getElementById("grid");
   if (!wm || !grid) return;
 
   const firstTile = grid.querySelector(".tile");
@@ -353,48 +353,20 @@ function syncWatermarkDOMToOneTile() {
     return;
   }
 
-  // Ensure watermark lives INSIDE the first tile
-  if (getComputedStyle(firstTile).position === "static") firstTile.style.position = "relative";
-  if (wm.parentElement !== firstTile) firstTile.appendChild(wm);
+  // Make sure the tile can anchor an absolute watermark
+  if (getComputedStyle(firstTile).position === "static") {
+    firstTile.style.position = "relative";
+  }
 
+  // Move watermark into the first tile (so it exports as part of that tile visually)
+  if (wm.parentElement !== firstTile) {
+    firstTile.appendChild(wm);
+  }
+
+  // Ensure visible from Build Grid onwards
   wm.style.display = "block";
-wm.textContent = "⚡ Powered by Little Ollie";
-
-  // Top-left badge box
-  wm.style.position = "absolute";
-  wm.style.left = "2px";
-  wm.style.top = "2px";
-  wm.style.right = "auto";
-  wm.style.bottom = "auto";
-  wm.style.width = "auto";
-  wm.style.height = "auto";
-
-  wm.style.padding = "6px 10px";
-  wm.style.borderRadius = "8px";
-  wm.style.background = "rgba(0,0,0,0.35)";      // transparent rectangle
-  wm.style.border = "1px solid rgba(255,255,255,0.22)";
-  wm.style.boxShadow = "0 6px 16px rgba(0,0,0,0.25)";
-  wm.style.backdropFilter = "blur(2px)";          // optional (works in most modern browsers)
-
-  wm.style.color = "rgba(255,255,255,0.92)";
-  wm.style.fontWeight = "800";
-wm.style.letterSpacing = "0.2px";
-wm.style.pointerEvents = "none";
-wm.style.whiteSpace = "nowrap";
-
-const wmTileW = firstTile.getBoundingClientRect().width || 200;
-const fontPx = Math.max(11, Math.min(18, Math.round(wmTileW * 0.095)));
-
-wm.style.fontSize = fontPx + "px";
-wm.style.padding = "7px 12px";
-wm.style.maxWidth = "96%";
-wm.style.overflow = "hidden";
-wm.style.textOverflow = "ellipsis";
-wm.style.whiteSpace = "nowrap";
-wm.style.fontFamily =
-  "system-ui, -apple-system, Segoe UI, Roboto, Arial, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji'";
-
 }
+
 
 
 // ---------- Wallet list ----------
@@ -653,6 +625,9 @@ function buildGrid() {
   for (let i = 0; i < usedItems.length; i++) grid.appendChild(makeNFTTile(usedItems[i]));
   const remaining = totalSlots - usedItems.length;
   for (let j = 0; j < remaining; j++) grid.appendChild(makeFillerTile());
+
+requestAnimationFrame(syncWatermarkDOMToOneTile);
+
 
   const wm = $("wmGrid");
   if (wm) wm.style.display = "";
