@@ -7,6 +7,7 @@
   base-uri 'self';
   object-src 'none';
 
+
   img-src
     'self'
     data:
@@ -31,6 +32,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1, user-scalable=no" />
   <link rel="icon" type="image/png" href="../icons/icon-192.png" />
   <title>Little Ollie Flex Grid</title>
+<link rel="stylesheet" href="./style.css?v=1">
 
   <style>
     *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
@@ -363,6 +365,49 @@
     /* Drag visuals */
     .tile.dragging{ opacity:.55; }
     .tile.dropTarget{ outline: 2px solid rgba(255,221,85,0.95); outline-offset:-2px; }
+/* ===== BUTTONS UPGRADE (OVERRIDE) ===== */
+.btn, .btnSmall{
+  border: 1px solid rgba(255,255,255,.25);
+  background: linear-gradient(180deg, var(--btnYellow), var(--btnYellow2));
+  box-shadow:
+    0 10px 18px rgba(0,0,0,.25),
+    inset 0 2px 0 rgba(255,255,255,.35);
+  transform: translateY(0);
+  transition: transform .08s ease, filter .15s ease, box-shadow .15s ease;
+}
+
+.btn:hover, .btnSmall:hover{
+  filter: brightness(1.05);
+}
+
+.btn:active, .btnSmall:active{
+  transform: translateY(1px) scale(.99);
+  box-shadow:
+    0 8px 14px rgba(0,0,0,.22),
+    inset 0 1px 0 rgba(255,255,255,.25);
+}
+
+.btn:disabled{
+  opacity: .55;
+  cursor:not-allowed;
+  box-shadow: none;
+  border-color: rgba(255,255,255,.18);
+}
+
+/* Actions row layout polish */
+.actions{
+  gap: 12px;
+  padding-top: 6px;
+}
+
+.actions .btn{
+  min-width: 170px;
+}
+
+@media (max-width: 520px){
+  .actions{ flex-direction: column; align-items: stretch; }
+  .actions .btn{ width: 100%; }
+}
   </style>
 </head>
 
@@ -606,6 +651,6 @@
     })();
   </script>
 
-<script type="module" src="./app.js?v=20260109-28"></script>
+<script type="module" src="./app.js?v=20260109-16"></script>
 </body>
 </html>
