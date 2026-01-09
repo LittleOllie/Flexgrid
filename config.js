@@ -1,58 +1,50 @@
 /**
- * Flex Grid Configuration (Clean + GitHub Pages friendly)
+ * Flex Grid Configuration (Simple + Reliable)
  *
- * Goals:
- * - Works on GitHub Pages (no backend required)
- * - Works on localhost (optional local backend proxy)
- * - Avoids DEV config accidentally running in production
+ * This version is designed to work on:
+ * - GitHub Pages (littleollie.github.io)
+ * - localhost
  *
- * SECURITY NOTE:
- * - Any API key in frontend JS can be extracted by someone determined.
- * - For true security, move Alchemy calls behind your own backend.
+ * If you later add a real backend, you can switch to backend-only config.
  */
 
+const IS_BROWSER = typeof window !== "undefined";
+const HOSTNAME = IS_BROWSER ? window.location.hostname : "";
+
+// ✅ Treat these as “allowed dev-style hosting” (GitHub Pages + localhost)
+// Add your custom domain here if you use one, e.g. "flexgrid.littleollie.com"
+const ALLOW_FRONTEND_CONFIG =
+  HOSTNAME === "localhost" ||
+  HOSTNAME.endsWith("github.io");
+
 // ============================================
-// DEV / LOCAL CONFIG (ONLY USED ON localhost)
+// FRONTEND CONFIG (USED ON GitHub Pages + localhost)
 // ============================================
 
-const DEV_CONFIG = {
-  // ✅ Only enable DEV_CONFIG on localhost
-enabled:
-  (typeof window !== "undefined" &&
-   (window.location.hostname === "localhost" || window.location.hostname.endsWith("github.io"))),
+const FRONTEND_CONFIG = {
+  enabled: ALLOW_FRONTEND_CONFIG,
 
-  // Development API key (rotate if ever exposed publicly)
+  // ⚠️ Frontend keys are not truly secret — restrict this key in Alchemy by domain.
   alchemyApiKey: "GYuepn7j7XCslBzxLwO5M",
 
-  // Proxy URL to use for images
-  // - On localhost: you CAN use your local proxy if you run it
-  // - Else: default to Cloudflare Worker
-  workerUrl:
-    (typeof window !== "undefined" && window.location.hostname === "localhost")
-      ? "http://localhost:3000/api/proxy/image?url="
-      : "https://loflexgrid.littleollienft.workers.dev/img?url=",
+  // Image proxy (Worker) — this MUST be reachable from GitHub Pages
+  workerUrl: "https://loflexgrid.littleollienft.workers.dev/img?url=",
+
+  // Optional local proxy (only if you run it)
+  localWorkerUrl: "http://localhost:3000/api/proxy/image?url=",
 };
 
 // ============================================
-// PRODUCTION CONFIG LOADING
+// LOAD CONFIG
 // ============================================
 
-/**
- * Load configuration
- * Order:
- * 1) Backend endpoint (ONLY on localhost, if running)
- * 2) Build-time env vars (if you ever bundle with Vite/etc)
- * 3) DEV_CONFIG fallback (ONLY on localhost)
- * 4) Throw error
- */
 async function loadConfig() {
-  const isBrowser = (typeof window !== "undefined");
-  const hostname = isBrowser ? window.location.hostname : "";
+  if (!IS_BROWSER) {
+    throw new Error("Config can only be loaded in the browser.");
+  }
 
-  // --------------------------------------------
-  // Method 1: Secure backend endpoint (localhost only)
-  // --------------------------------------------
-  if (hostname === "localhost") {
+  // 1) If on localhost and you have a backend config endpoint, try it
+  if (HOSTNAME === "localhost") {
     try {
       const response = await fetch("http://localhost:3000/api/config/flex-grid", {
         method: "GET",
@@ -63,65 +55,40 @@ async function loadConfig() {
       if (response.ok) {
         const config = await response.json();
         if (config?.alchemyApiKey && config?.workerUrl) {
-          console.log("✅ Loaded config from secure backend endpoint");
+          console.log("✅ Config: loaded from localhost backend endpoint");
           return config;
         }
-      } else {
-        // Non-fatal; continue to next method
-        const errorData = await response.json().catch(() => ({}));
-        console.warn(
-          "⚠️ Backend config returned error:",
-          errorData?.message || `HTTP ${response.status} ${response.statusText}`
-        );
       }
-    } catch (error) {
-      console.warn("⚠️ Secure config endpoint not available:", error?.message || error);
+      console.warn("⚠️ Config: localhost backend endpoint not usable, falling back…");
+    } catch (err) {
+      console.warn("⚠️ Config: backend endpoint not available, falling back…", err?.message || err);
     }
   }
 
-  // --------------------------------------------
-  // Method 2: Build-time environment variables (optional)
-  // --------------------------------------------
-  // Only relevant if you use a bundler like Vite. Safe to keep as optional.
-  try {
-    // eslint-disable-next-line no-undef
-    if (typeof import.meta !== "undefined" && import.meta.env) {
-      // eslint-disable-next-line no-undef
-      const envKey = import.meta.env.VITE_ALCHEMY_API_KEY;
-      // eslint-disable-next-line no-undef
-      const envWorker = import.meta.env.VITE_WORKER_URL;
+  // 2) Frontend config for GitHub Pages / localhost
+  if (FRONTEND_CONFIG.enabled) {
+    const chosenWorker =
+      HOSTNAME === "localhost" ? FRONTEND_CONFIG.localWorkerUrl : FRONTEND_CONFIG.workerUrl;
 
-      if (envKey && envWorker) {
-        console.log("✅ Loaded config from environment variables");
-        return { alchemyApiKey: envKey, workerUrl: envWorker };
-      }
-    }
-  } catch (_) {
-    // ignore
-  }
+    console.log("✅ Config: using frontend config", {
+      hostname: HOSTNAME,
+      workerUrl: chosenWorker,
+    });
 
-  // --------------------------------------------
-  // Method 3: DEV_CONFIG fallback (localhost only)
-  // --------------------------------------------
-  if (DEV_CONFIG.enabled) {
-    console.warn("⚠️ Using DEV_CONFIG (localhost only) — NOT for production!");
     return {
-      alchemyApiKey: DEV_CONFIG.alchemyApiKey,
-      workerUrl: DEV_CONFIG.workerUrl,
+      alchemyApiKey: FRONTEND_CONFIG.alchemyApiKey,
+      workerUrl: chosenWorker,
     };
   }
 
-  // --------------------------------------------
-  // Method 4: No config available
-  // --------------------------------------------
+  // 3) Nothing available
+  console.error("❌ Config: not enabled for this hostname:", HOSTNAME);
   throw new Error(
-    "Configuration not available.\n\n" +
-      "If you're on GitHub Pages / production:\n" +
-      " - Put your Cloudflare Worker URL into config.js, and\n" +
-      " - Provide an alchemyApiKey (note: frontend keys are not truly secret).\n\n" +
-      "If you're on localhost:\n" +
-      " - Run your backend at http://localhost:3000 OR enable DEV_CONFIG.\n"
+    "Configuration not available for this site.\n\n" +
+    `Hostname: ${HOSTNAME}\n\n` +
+    "If you're using GitHub Pages, hostname should end with github.io.\n" +
+    "If you're using a custom domain, add it to ALLOW_FRONTEND_CONFIG in config.js."
   );
 }
 
-export { loadConfig, DEV_CONFIG };
+export { loadConfig, FRONTEND_CONFIG };
