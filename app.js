@@ -1141,11 +1141,11 @@ function drawWatermarkAcrossTile(ctx, x, y, w, h) {
 }
 
 async function saveCanvasPNG(canvas, filename = "little-ollie-grid.png") {
-  // Prefer blob
+  // Use blob (best quality + memory)
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 1.0));
 
+  // If blob fails, fallback to dataURL
   if (!blob) {
-    // Fallback dataURL
     const dataUrl = canvas.toDataURL("image/png");
     if (isIOS()) {
       const win = window.open(dataUrl, "_blank");
@@ -1161,13 +1161,39 @@ async function saveCanvasPNG(canvas, filename = "little-ollie-grid.png") {
     return;
   }
 
-  // iPhone / iPad: Share Sheet is best
-  const file = new File([blob], filename, { type: "image/png" });
-
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    await navigator.share({ files: [file], title: "Little Ollie Grid" });
+  // ✅ iPhone/iPad: open in new tab so user can long-press → Save Image
+  if (isIOS()) {
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, "_blank");
+    if (!win) {
+      alert("Popup blocked. Allow popups to save the PNG.");
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
     return;
   }
+
+  // ✅ Desktop: download normally
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 8000);
+}
+
+if (navigator.canShare && navigator.canShare({ files: [file] })) {
+  try {
+    // Some browsers require share() to be called without awaiting other tasks.
+    // Even if this throws, we fall back to opening/downloading.
+    navigator.share({ files: [file], title: "Little Ollie Grid" });
+    return;
+  } catch (e) {
+    // continue to fallback
+  }
+}
+
 
   // Desktop / fallback: blob download
   const url = URL.createObjectURL(blob);
