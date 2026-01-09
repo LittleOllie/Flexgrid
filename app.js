@@ -62,8 +62,40 @@ function createLimiter(max = 3) {
 // 3–5 is generally safe. If your Worker gets 502s, keep it low (3).
 let gridImgLimit = createLimiter(3);
 
+// ---------- Image loading tune ----------
+const IMG_LOAD = {
+  gridTimeoutMs: 25000,     // ✅ longer time to load
+  gridDirectTimeoutMs: 20000,
+  retriesPerCandidate: 1,   // extra tries per URL
+  backoffMs: 500,           // wait between attempts
+};
+
+// Prefer reliable gateways first (you can reorder later)
+const IPFS_GATEWAYS = [
+  "https://cloudflare-ipfs.com/ipfs/",
+  "https://nftstorage.link/ipfs/",
+  "https://w3s.link/ipfs/",
+  "https://dweb.link/ipfs/",
+  "https://gateway.pinata.cloud/ipfs/",
+  "https://ipfs.io/ipfs/",
+  "https://ipfs.filebase.io/ipfs/",
+];
+
+function setImgCORS(imgEl, enabled) {
+  try {
+    if (!imgEl) return;
+    if (enabled) {
+      imgEl.crossOrigin = "anonymous";
+    } else {
+      imgEl.removeAttribute("crossorigin");
+      // Some browsers keep the property; clearing helps.
+      imgEl.crossOrigin = null;
+    }
+  } catch (_) {}
+}
+
 // ---------- Timeout wrapper for image loading ----------
-function loadImgWithTimeout(imgEl, src, timeout = 10000) {
+function loadImgWithTimeout(imgEl, src, timeout = 25000) {
   return Promise.race([
     new Promise((resolve, reject) => {
       const clean = () => {
@@ -87,14 +119,14 @@ function loadImgWithTimeout(imgEl, src, timeout = 10000) {
   ]);
 }
 
-function loadImgWithLimiter(imgEl, src, timeout = 10000) {
+function loadImgWithLimiter(imgEl, src, timeout = 25000) {
   return gridImgLimit(
     () => loadImgWithTimeout(imgEl, src, timeout)
   );
 }
 
 // Non-limited (for direct fallback)
-function loadImgNoLimit(imgEl, src, timeout = 8000) {
+function loadImgNoLimit(imgEl, src, timeout = 20000) {
   return loadImgWithTimeout(imgEl, src, timeout);
 }
 
@@ -623,6 +655,9 @@ function buildGrid() {
 }
 
 // ---------- Image loading + fallbacks ----------
+// ---------- Missing grace period (prevents "Missing" too fast) ----------
+const MISSING_GRACE_MS = 30000; // ✅ must attempt for at least 30s before showing Missing
+
 function makeMissingInner() {
   const d = document.createElement("div");
   d.className = "fillerText";
@@ -734,72 +769,89 @@ async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
 
   // Strategy 2: Worker proxy (primary URL, 10s timeout)
   try {
-    await loadImgWithLimiter(img, gridProxyUrl(primary), 10000);
+setImgCORS(img, true);
+await loadImgWithLimiter(img, gridProxyUrl(primary), IMG_LOAD.gridTimeoutMs);
     state.imageLoadState.loaded++;
     updateImageProgress();
     tile.dataset.kind = "loaded";
     return true;
   } catch (e1) {
-    // Strategy 3: Direct URL (if HTTPS, 8s timeout)
-    if (!ipfsPath && /^https?:\/\//i.test(primary)) {
+
+// Strategy 3: Direct URL (DISPLAY-ONLY fallback)
+// IMPORTANT: disable CORS for direct display, otherwise gateways/CDNs without ACAO will fail.
+if (!ipfsPath && /^https?:\/\//i.test(primary)) {
+  try {
+    setImgCORS(img, false);
+    await loadImgNoLimit(img, primary, IMG_LOAD.gridDirectTimeoutMs);
+    state.imageLoadState.loaded++;
+    updateImageProgress();
+    tile.dataset.kind = "loaded";
+    return true;
+  } catch (e2) {
+    // Continue to next strategy
+  } finally {
+    // Restore CORS mode for any later proxy attempts
+    setImgCORS(img, true);
+  }
+}
+
+
+// Strategy 4: Alternative IPFS gateways (IPFS ONLY)
+// ✅ We try MULTIPLE gateways but ALWAYS through the WORKER proxy to avoid CORS issues.
+if (ipfsPath) {
+  const candidates = IPFS_GATEWAYS.map(g => g + ipfsPath);
+
+  for (const gatewayUrl of candidates) {
+    for (let attempt = 0; attempt <= IMG_LOAD.retriesPerCandidate; attempt++) {
       try {
-        await loadImgNoLimit(img, primary, 8000);
+        setImgCORS(img, true);
+        await loadImgWithLimiter(img, gridProxyUrl(gatewayUrl), IMG_LOAD.gridTimeoutMs);
         state.imageLoadState.loaded++;
         updateImageProgress();
         tile.dataset.kind = "loaded";
+        tile.dataset.src = gatewayUrl;
         return true;
-      } catch (e2) {
-        // Continue to next strategy
+      } catch (e) {
+        // small backoff before next try
+        if (attempt < IMG_LOAD.retriesPerCandidate) {
+          await new Promise(r => setTimeout(r, IMG_LOAD.backoffMs));
+        }
       }
     }
   }
+}
 
-  // Strategy 4: Alternative IPFS gateways (if IPFS) - Expanded list
-  if (ipfsPath && retryAttempt < maxRetries) {
-    // Try multiple IPFS gateways in order of reliability
-    const altGateways = [
-      `https://ipfs.io/ipfs/${ipfsPath}`,
-      `https://cloudflare-ipfs.com/ipfs/${ipfsPath}`,
-      `https://gateway.pinata.cloud/ipfs/${ipfsPath}`,
-      `https://nftstorage.link/ipfs/${ipfsPath}`,
-      `https://w3s.link/ipfs/${ipfsPath}`,
-      `https://dweb.link/ipfs/${ipfsPath}`,
-      `https://gateway.ipfs.io/ipfs/${ipfsPath}`,
-      `https://ipfs.filebase.io/ipfs/${ipfsPath}`,
-      `https://cf-ipfs.com/ipfs/${ipfsPath}`
-    ];
-    
-    // First try through proxy
-    for (const gatewayUrl of altGateways) {
-      try {
-        await loadImgWithLimiter(img, gridProxyUrl(gatewayUrl), 10000);
-        state.imageLoadState.loaded++;
-        updateImageProgress();
-        tile.dataset.kind = "loaded";
-        return true;
-      } catch (e) {
-        // Try next gateway
-      }
-    }
-    
-    // If proxy fails, try direct gateway URLs (bypass proxy)
-    for (const gatewayUrl of altGateways) {
-      try {
-        await loadImgNoLimit(img, gatewayUrl, 8000);
-        state.imageLoadState.loaded++;
-        updateImageProgress();
-        tile.dataset.kind = "loaded";
-        return true;
-      } catch (e) {
-        // Try next gateway
-      }
-    }
-  }
+// All strategies failed — but don't show Missing too fast
+const startedAt = Number(tile.dataset.loadStartedAt || Date.now());
+const elapsed = Date.now() - startedAt;
 
-  // All strategies failed
-  markMissing(tile, img, rawUrl);
-  state.imageLoadState.failed++;
+if (elapsed < MISSING_GRACE_MS) {
+  // Wait out the remaining grace time, then try ONE more time (proxy-first path)
+  const waitMs = MISSING_GRACE_MS - elapsed;
+  state.imageLoadState.retrying++;
   updateImageProgress();
+
+  await new Promise(r => setTimeout(r, waitMs));
+
+  state.imageLoadState.retrying = Math.max(0, state.imageLoadState.retrying - 1);
+  updateImageProgress();
+
+  // One final attempt: proxy primary again with the longer timeout
+  try {
+    await loadImgWithLimiter(img, gridProxyUrl(primary), 25000);
+    state.imageLoadState.loaded++;
+    updateImageProgress();
+    tile.dataset.kind = "loaded";
+    return true;
+  } catch (_) {
+    // fall through to missing
+  }
+}
+
+markMissing(tile, img, rawUrl);
+state.imageLoadState.failed++;
+updateImageProgress();
+
   
   // Log image loading failure (only for significant failures)
   if (retryAttempt === 0) {
@@ -827,12 +879,18 @@ function makeNFTTile(it) {
   img.loading = "lazy";
   img.alt = safeText(it?.name || "NFT");
   img.referrerPolicy = "no-referrer";
-  img.crossOrigin = "anonymous";
+// Default to CORS-on because we mostly use the Worker proxy.
+// For rare direct fallback we temporarily disable it in loadTileImage().
+img.crossOrigin = "anonymous";
 
-  if (raw) {
+    if (raw) {
     tile.appendChild(img);
     tile.dataset.rawUrl = raw;
     tile.dataset.retryCount = "0";
+
+    // ✅ Part 3: track when this tile started loading (used for Missing grace period)
+    tile.dataset.loadStartedAt = String(Date.now());
+
     loadTileImage(tile, img, raw).catch(() => {
       // Error already handled in loadTileImage
     });
