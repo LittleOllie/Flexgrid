@@ -337,14 +337,25 @@
   z-index:9999;
   pointer-events:none;
 
-  font-size:8px;
-  padding:1px 4px;
+  /* TEXT */
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.2px;
+  color: rgba(255,255,255,0.95);
+
+  /* ✅ PADDING (THIS IS THE KEY PART) */
+  padding:4px 8px;   /* top/bottom | left/right */
+
+  /* BACKGROUND BADGE */
+  background: rgba(0,0,0,0.35);
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,0.22);
+  box-shadow:0 6px 16px rgba(0,0,0,0.25);
 
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
 }
-
 
     /* Drag visuals */
     .tile.dragging{ opacity:.55; }
@@ -592,6 +603,6 @@
     })();
   </script>
 
-<script type="module" src="./app.js?v=20260109-24"></script>
+<script type="module" src="./app.js?v=20260109-25"></script>
 </body>
 </html>
