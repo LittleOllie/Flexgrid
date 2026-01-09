@@ -1121,38 +1121,37 @@ function drawLightningIcon(ctx, x, y, size) {
 }
 
 function drawWatermarkAcrossTile(ctx, x, y, w, h) {
-  const textRaw = "Powered by Little Ollie"; // we'll draw the bolt separately
+  const text = "Powered by Little Ollie Studio";
 
   ctx.save();
 
-  // ✅ closer to top-left
+  // position near top-left of the first tile
   const padX = Math.max(3, Math.round(w * 0.02));
   const padY = Math.max(3, Math.round(h * 0.02));
   const bx = x + padX;
   const by = y + padY;
 
-  // ✅ slightly bigger, scales with tile
+  // font sizing
   let fontPx = Math.max(11, Math.floor(w * 0.085));
-  const minFontPx = 10;
+  const minFontPx = 9;
 
-  // badge sizing
-  const maxBoxW = Math.round(w * 0.92); // a bit wider than before
-
-  // font stack includes emoji fonts (helps ⚡ if you ever re-add it)
-  const fontStack = "system-ui, -apple-system, Segoe UI, Roboto, Arial, Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji";
+  const fontStack =
+    "system-ui, -apple-system, Segoe UI, Roboto, Arial, Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji";
 
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
 
-  const padInsideX = () => Math.round(fontPx * 0.85);
+  // padding inside badge
+  const padInsideX = () => Math.round(fontPx * 0.75);
   const padInsideY = () => Math.round(fontPx * 0.55);
 
-  // We'll reserve space for a bolt icon + small gap
+  // emoji size + spacing
   const boltSize = Math.round(fontPx * 1.05);
-  const boltGap = Math.round(fontPx * 0.45);
+  const boltGap = Math.round(fontPx * 0.35);
 
-  // shrink-to-fit loop
-  let text = textRaw;
+  const maxBoxW = Math.round(w * 0.92);
+
+  // shrink-to-fit
   while (fontPx > minFontPx) {
     ctx.font = `900 ${fontPx}px ${fontStack}`;
     const textW = ctx.measureText(text).width;
@@ -1170,7 +1169,7 @@ function drawWatermarkAcrossTile(ctx, x, y, w, h) {
   const boxW = Math.min(maxBoxW, Math.round(textW + boxPadX * 2 + boltSize + boltGap));
   const boxH = Math.round(Math.max(fontPx, boltSize) + boxPadY * 2);
 
-  // rounded rect
+  // rounded rect badge
   const r = Math.max(7, Math.round(fontPx * 0.7));
   ctx.fillStyle = "rgba(0,0,0,0.35)";
   ctx.strokeStyle = "rgba(255,255,255,0.22)";
@@ -1187,18 +1186,17 @@ function drawWatermarkAcrossTile(ctx, x, y, w, h) {
   ctx.lineTo(bx, by + r);
   ctx.quadraticCurveTo(bx, by, bx + r, by);
   ctx.closePath();
-
   ctx.fill();
   ctx.stroke();
 
-// ⚡ draw yellow emoji bolt
-ctx.font = `900 ${boltSize}px ${fontStack}`;
-ctx.fillStyle = "#FFD400"; // emoji yellow
-ctx.fillText("⚡", bx + boxPadX, by + boxPadY);
-
+  // ⚡ emoji (yellow)
+  ctx.font = `900 ${boltSize}px ${fontStack}`;
+  ctx.fillText("⚡", bx + boxPadX, by + boxPadY);
 
   // text
-  const textX = boltX + boltSize + boltGap;
+  ctx.font = `900 ${fontPx}px ${fontStack}`;
+  const textX = bx + boxPadX + boltSize + boltGap;
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
   ctx.fillText(text, textX, by + boxPadY);
 
   ctx.restore();
