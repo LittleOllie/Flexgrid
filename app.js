@@ -358,12 +358,12 @@ function syncWatermarkDOMToOneTile() {
   if (wm.parentElement !== firstTile) firstTile.appendChild(wm);
 
   wm.style.display = "block";
-wm.textContent = "⚡Powered by Little Ollie⚡";
+wm.textContent = "⚡ Powered by Little Ollie";
 
   // Top-left badge box
   wm.style.position = "absolute";
-  wm.style.left = "6px";
-  wm.style.top = "6px";
+  wm.style.left = "2px";
+  wm.style.top = "2px";
   wm.style.right = "auto";
   wm.style.bottom = "auto";
   wm.style.width = "auto";
@@ -382,10 +382,15 @@ wm.textContent = "⚡Powered by Little Ollie⚡";
   wm.style.pointerEvents = "none";
   wm.style.whiteSpace = "nowrap";
 
-wm.style.maxWidth = "92%";
+const tileW = firstTile.getBoundingClientRect().width || 200;
+const fontPx = Math.max(11, Math.min(18, Math.round(tileW * 0.095)));
+wm.style.fontSize = fontPx + "px";
+wm.style.padding = "7px 12px";
+wm.style.maxWidth = "96%";
 wm.style.overflow = "hidden";
 wm.style.textOverflow = "ellipsis";
 wm.style.whiteSpace = "nowrap";
+wm.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji'";
 
   // Auto-scale text to tile size (so it works on any grid)
   const tileW = firstTile.getBoundingClientRect().width || 200;
@@ -1124,47 +1129,71 @@ function drawPlaceholder(ctx, x, y, w, h, label = "Missing") {
   ctx.restore();
 }
 
+function drawLightningIcon(ctx, x, y, size) {
+  // Simple bolt shape (always works, no emoji dependency)
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.beginPath();
+  ctx.moveTo(size * 0.55, 0);
+  ctx.lineTo(size * 0.10, size * 0.60);
+  ctx.lineTo(size * 0.48, size * 0.60);
+  ctx.lineTo(size * 0.30, size);
+  ctx.lineTo(size * 0.90, size * 0.40);
+  ctx.lineTo(size * 0.55, size * 0.40);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawWatermarkAcrossTile(ctx, x, y, w, h) {
-  const textRaw = "⚡ Powered by Little Ollie";
+  const textRaw = "Powered by Little Ollie"; // we'll draw the bolt separately
 
   ctx.save();
 
-  // placement
-  const padX = Math.round(w * 0.05);
-  const padY = Math.round(h * 0.05);
+  // ✅ closer to top-left
+  const padX = Math.max(3, Math.round(w * 0.02));
+  const padY = Math.max(3, Math.round(h * 0.02));
   const bx = x + padX;
   const by = y + padY;
 
+  // ✅ slightly bigger, scales with tile
+  let fontPx = Math.max(11, Math.floor(w * 0.085));
+  const minFontPx = 10;
+
   // badge sizing
-  const maxBoxW = Math.round(w * 0.86);          // keep it comfortably inside tile
-  let fontPx = Math.max(9, Math.floor(w * 0.075)); // starting font size
-  const minFontPx = 9;
+  const maxBoxW = Math.round(w * 0.92); // a bit wider than before
 
-  // a bit more padding so text never kisses rounded corners
-  const padInsideX = () => Math.round(fontPx * 0.85);
-  const padInsideY = () => Math.round(fontPx * 0.55);
+  // font stack includes emoji fonts (helps ⚡ if you ever re-add it)
+  const fontStack = "system-ui, -apple-system, Segoe UI, Roboto, Arial, Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji";
 
-  // choose a font size that fits inside maxBoxW
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
 
+  const padInsideX = () => Math.round(fontPx * 0.85);
+  const padInsideY = () => Math.round(fontPx * 0.55);
+
+  // We'll reserve space for a bolt icon + small gap
+  const boltSize = Math.round(fontPx * 1.05);
+  const boltGap = Math.round(fontPx * 0.45);
+
+  // shrink-to-fit loop
   let text = textRaw;
   while (fontPx > minFontPx) {
-    ctx.font = `900 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+    ctx.font = `900 ${fontPx}px ${fontStack}`;
     const textW = ctx.measureText(text).width;
-    const boxW = Math.round(textW + padInsideX() * 2);
+    const boxW = Math.round(textW + padInsideX() * 2 + boltSize + boltGap);
     if (boxW <= maxBoxW) break;
     fontPx--;
   }
 
-  ctx.font = `900 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+  ctx.font = `900 ${fontPx}px ${fontStack}`;
   const textW = ctx.measureText(text).width;
 
   const boxPadX = padInsideX();
   const boxPadY = padInsideY();
 
-  const boxW = Math.min(maxBoxW, Math.round(textW + boxPadX * 2));
-  const boxH = Math.round(fontPx + boxPadY * 2);
+  const boxW = Math.min(maxBoxW, Math.round(textW + boxPadX * 2 + boltSize + boltGap));
+  const boxH = Math.round(Math.max(fontPx, boltSize) + boxPadY * 2);
 
   // rounded rect
   const r = Math.max(7, Math.round(fontPx * 0.7));
@@ -1187,9 +1216,15 @@ function drawWatermarkAcrossTile(ctx, x, y, w, h) {
   ctx.fill();
   ctx.stroke();
 
-  // text (slightly inset so it never touches the rounded edges)
+  // ✅ draw bolt icon (guaranteed)
   ctx.fillStyle = "rgba(255,255,255,0.92)";
-  ctx.fillText(text, bx + boxPadX, by + boxPadY);
+  const boltX = bx + boxPadX;
+  const boltY = by + boxPadY + Math.round((fontPx - boltSize) * 0.15);
+  drawLightningIcon(ctx, boltX, boltY, boltSize);
+
+  // text
+  const textX = boltX + boltSize + boltGap;
+  ctx.fillText(text, textX, by + boxPadY);
 
   ctx.restore();
 }
