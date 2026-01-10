@@ -1332,34 +1332,60 @@ async function exportPNG() {
       }
     }
 
-    // ---- WATERMARK ----
-    const wm = $("watermark");
-    if(wm){
-      const txt = wm.textContent.trim();
+// ---- WATERMARK (robust) ----
+let wmText = "";
 
-      const firstTileW = tileSize - 8;
+// 1) Preferred: element with id="watermark"
+const wmEl = document.getElementById("watermark");
 
-      ctx.font = `bold ${Math.max(12, firstTileW*0.18)}px system-ui`;
-      ctx.textBaseline = "top";
+// 2) Fallbacks: common variants
+const wmAlt =
+  document.querySelector("[data-watermark]") ||
+  document.getElementById("wm") ||
+  document.getElementById("watermarkText") ||
+  document.querySelector(".watermark");
 
-      const textW = ctx.measureText(txt).width;
-      const boxPad = 6;
+if (wmEl) wmText = (wmEl.textContent || "").trim();
+if (!wmText && wmAlt) wmText = (wmAlt.textContent || "").trim();
 
-      const boxW = Math.min(textW + boxPad*2, firstTileW);
-      const boxH = parseInt(ctx.font) + boxPad*2;
+// 3) Final fallback: use selected collection name if you store it somewhere
+// (If you have a variable like state.selectedCollectionName, set it here)
+// if (!wmText && state?.selectedCollectionName) wmText = state.selectedCollectionName;
 
-      // LOCK to first tile
-      const bx = pad + 4;
-      const by = pad + 4;
+if (!wmText) {
+  console.warn("⚠️ No watermark text found (export). Check element id/class.");
+} else {
+  const firstTileW = tileSize - 8;
 
-      // box
-      ctx.fillStyle = "rgba(0,0,0,0.6)";
-      ctx.fillRect(bx, by, boxW, boxH);
+  // font size scales with tile size but stays sane
+  const fontPx = Math.max(12, Math.round(firstTileW * 0.18));
+  ctx.font = `800 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+  ctx.textBaseline = "top";
 
-      // text
-      ctx.fillStyle = "#ffd22e";
-      ctx.fillText(txt, bx + boxPad, by + boxPad);
-    }
+  const boxPad = 6;
+  const textW = ctx.measureText(wmText).width;
+
+  // box width clamped to first tile width
+  const boxW = Math.min(textW + boxPad * 2, firstTileW);
+  const boxH = fontPx + boxPad * 2;
+
+  // top-left inside first tile
+  const bx = pad + 4;
+  const by = pad + 4;
+
+  // background box
+  ctx.fillStyle = "rgba(0,0,0,0.62)";
+  ctx.fillRect(bx, by, boxW, boxH);
+
+  // text (truncate if needed)
+  let drawText = wmText;
+  while (ctx.measureText(drawText).width > (boxW - boxPad * 2) && drawText.length > 3) {
+    drawText = drawText.slice(0, -2) + "…";
+  }
+
+  ctx.fillStyle = "#ffd22e";
+  ctx.fillText(drawText, bx + boxPad, by + boxPad);
+}
 
     // export
     const url = canvas.toDataURL("image/png",1);
