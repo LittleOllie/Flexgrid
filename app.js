@@ -91,6 +91,8 @@ const state = {
   wallets: [],
   chain: "eth",
   host: "eth-mainnet.g.alchemy.com",
+imageLoadState: { total: 0, loaded: 0, failed: 0, retrying: 0 },
+
 };
 
 // ---- Export watermark (single source of truth) ----
@@ -1249,10 +1251,11 @@ async function enrichQuestingLabels(nfts) {
   if (!IMG_PROXY) return;
 
   // Filter questing NFTs that *might* need tokenUri parsing
-  const targets = nfts.filter(n =>
-    looksQuestingNFT(n) &&
-    n?.tokenUri &&              // your screenshot shows tokenUri exists
-    !n?.rawMetadata             // rawMetadata undefined in screenshot
+const targets = nfts.filter(n =>
+  looksQuestingNFT(n) &&
+  (n?.tokenUri || n?.tokenUri?.gateway || n?.raw?.tokenUri)
+);
+
   );
 
   if (!targets.length) return;
@@ -1267,7 +1270,13 @@ async function enrichQuestingLabels(nfts) {
   setStatus(`Questing detected… checking metadata (${batch.length} items)`);
 
   await Promise.all(batch.map(nft => metaLimit(async () => {
-    const tokenUri = String(nft.tokenUri).trim();
+const tokenUri =
+  String(
+    nft?.tokenUri ||
+    nft?.tokenUri?.gateway ||
+    nft?.raw?.tokenUri ||
+    ""
+  ).trim();
     if (!tokenUri) return;
 
     if (QUEST_META_CACHE.has(tokenUri)) {
