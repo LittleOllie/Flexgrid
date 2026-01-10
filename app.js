@@ -1063,19 +1063,11 @@ async function loadWallets() {
     }
 const deduped = dedupeNFTs(allNfts);
 
-// TEMP DEBUG: inspect questing/staking metadata
-const sample = deduped.find(n =>
-  /quest|stake/i.test(n?.contract?.name || n?.collection?.name || "")
-);
-
-if (sample) {
-  console.log("🔎 QUEST SAMPLE", sample);
-  console.log("🔎 rawMetadata", sample?.rawMetadata);
-  console.log("🔎 attributes", sample?.rawMetadata?.attributes);
-  console.log("🔎 tokenUri", sample?.tokenUri);
-}
+// ✅ NEW: enrich questing NFTs so we can split Quirkies vs Quirklings if metadata allows it
+await enrichQuestingLabels(deduped);
 
 const grouped = groupByCollection(deduped);
+
 
 
     state.collections = grouped;
@@ -1166,6 +1158,95 @@ async function fetchAlchemyNFTMetadata({ contract, tokenId, host }) {
   return json;
 }
 
+// ---------- Questing split support (fetch tokenUri JSON via Worker) ----------
+const QUEST_META_CACHE = new Map(); // tokenUri -> { label, meta }
+
+function extractQuestLabelFromMeta(meta) {
+  if (!meta) return "";
+
+  // 1) name like "Quirkies #123"
+  const nm = String(meta.name || "").trim();
+  const m = nm.match(/^(.+?)\s*#\s*\d+$/);
+  if (m && m[1]) return m[1].trim();
+
+  // 2) attributes array: look for any value mentioning quirkies/quirklings
+  const attrs = Array.isArray(meta.attributes) ? meta.attributes : [];
+  for (const a of attrs) {
+    const v = String(a?.value || "").toLowerCase();
+    const t = String(a?.trait_type || "").toLowerCase();
+    if (v.includes("quirklings") || t.includes("quirklings")) return "Quirklings";
+    if (v.includes("quirkies") || t.includes("quirkies")) return "Quirkies";
+  }
+
+  // 3) description fallback
+  const desc = String(meta.description || "").toLowerCase();
+  if (desc.includes("quirklings")) return "Quirklings";
+  if (desc.includes("quirkies")) return "Quirkies";
+
+  return "";
+}
+
+async function fetchJsonViaWorker(url) {
+  // Uses your IMG_PROXY Worker so CSP connect-src stays valid
+  const prox = IMG_PROXY + encodeURIComponent(url);
+  const res = await fetch(prox, { method: "GET" });
+  if (!res.ok) throw new Error(`Worker fetch failed (${res.status})`);
+  return await res.json();
+}
+
+function looksQuestingNFT(nft) {
+  const colName = nft?.contract?.name || nft?.collection?.name || "";
+  return /quest|stake/i.test(String(colName));
+}
+
+async function enrichQuestingLabels(nfts) {
+  // Only attempt when we have IMG_PROXY
+  if (!IMG_PROXY) return;
+
+  // Filter questing NFTs that *might* need tokenUri parsing
+  const targets = nfts.filter(n =>
+    looksQuestingNFT(n) &&
+    n?.tokenUri &&              // your screenshot shows tokenUri exists
+    !n?.rawMetadata             // rawMetadata undefined in screenshot
+  );
+
+  if (!targets.length) return;
+
+  // Safety caps so we don't smash the gateway if someone has thousands
+  const HARD_CAP = 350;                // adjust if you want
+  const batch = targets.slice(0, HARD_CAP);
+
+  // Limit concurrency (reuse your limiter idea)
+  const metaLimit = createLimiter(4);
+
+  setStatus(`Questing detected… checking metadata (${batch.length} items)`);
+
+  await Promise.all(batch.map(nft => metaLimit(async () => {
+    const tokenUri = String(nft.tokenUri).trim();
+    if (!tokenUri) return;
+
+    if (QUEST_META_CACHE.has(tokenUri)) {
+      nft.__loQuestLabel = QUEST_META_CACHE.get(tokenUri).label || "";
+      return;
+    }
+
+    try {
+      const meta = await fetchJsonViaWorker(tokenUri);
+      const label = extractQuestLabelFromMeta(meta) || "";
+      QUEST_META_CACHE.set(tokenUri, { label, meta });
+      nft.__loQuestLabel = label;
+    } catch (e) {
+      // Don't hard-fail load; just leave unlabeled
+      QUEST_META_CACHE.set(tokenUri, { label: "", meta: null });
+      nft.__loQuestLabel = "";
+    }
+  })));
+
+  const labeled = batch.filter(x => x.__loQuestLabel).length;
+  setStatus(`Questing metadata checked ✅ (${labeled}/${batch.length} labeled)`);
+}
+
+
 function groupByCollection(nfts) {
   const map = new Map();
 
@@ -1184,15 +1265,32 @@ function groupByCollection(nfts) {
       nft?.rawMetadata?.image ||
       "";
 
-    if (!map.has(contract)) map.set(contract, { key: contract, name: colName, count: 0, items: [] });
+    const looksQuesting = /quest/i.test(String(colName));
 
-    const entry = map.get(contract);
+    // ✅ label discovered from tokenUri JSON (if available)
+    const qLabel = (nft.__loQuestLabel || "").trim();
+
+    // If we couldn't label it, keep it merged as one “Questing” group
+    const groupKey = looksQuesting && qLabel
+      ? `${contract}::${qLabel.toLowerCase()}`
+      : contract;
+
+    const displayName = looksQuesting && qLabel
+      ? `${colName} — ${qLabel}`
+      : colName;
+
+    if (!map.has(groupKey)) {
+      map.set(groupKey, { key: groupKey, name: displayName, count: 0, items: [] });
+    }
+
+    const entry = map.get(groupKey);
     entry.count++;
-    entry.items.push({ name, tokenId, contract, image, sourceKey: contract });
+    entry.items.push({ name, tokenId, contract, image, sourceKey: groupKey });
   }
 
   return [...map.values()].sort((a, b) => b.count - a.count);
 }
+
 
 // ---------- Export + helpers ----------
 function isIOS() {
