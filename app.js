@@ -664,9 +664,11 @@ function makeMissingInner() {
 function makeFillerInner() {
   const d = document.createElement("div");
   d.className = "fillerText";
-  d.textContent = "LO ⚡";
+  d.textContent = "";            // ✅ no LO text
+  d.setAttribute("aria-hidden","true");
   return d;
 }
+
 
 function markMissing(tile, img, rawUrl) {
   try {
@@ -1091,7 +1093,7 @@ async function loadImageWithRetry(src, tries = 2, timeoutMs = 25000) {
   throw lastErr || new Error("Image failed: " + src);
 }
 
-function drawPlaceholder(ctx, x, y, w, h, label = "Missing") {
+function drawPlaceholder(ctx, x, y, w, h, label = "") {
   ctx.save();
   ctx.globalAlpha = 1;
   ctx.fillStyle = "rgba(0,0,0,0.25)";
@@ -1101,14 +1103,10 @@ function drawPlaceholder(ctx, x, y, w, h, label = "Missing") {
   ctx.lineWidth = Math.max(2, Math.floor(w * 0.02));
   ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
 
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
-  const fontPx = Math.max(14, Math.floor(w * 0.10));
-  ctx.font = `800 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, x + w / 2, y + h / 2);
+  // ✅ No text drawn anymore
   ctx.restore();
 }
+
 
 function drawLightningIcon(ctx, x, y, size) {
   // Simple bolt shape (always works, no emoji dependency)
@@ -1303,17 +1301,18 @@ for (let r = 0; r < rows; r++) {
     const y = pad + r * tileSize;
 
     // broken image protection (iPhone fix)
-    if (!isImgUsable(img)) {
-      drawPlaceholder(ctx, x, y, tileSize, tileSize, "⚡");
-      continue;
-    }
+if (!isImgUsable(img)) {
+  drawPlaceholder(ctx, x, y, tileSize, tileSize, ""); // ✅ blank
+  continue;
+}
+
 
     try {
       ctx.drawImage(img, x, y, tileSize, tileSize);
-    } catch (e) {
-      console.warn("⚠️ drawImage failed", e);
-      drawPlaceholder(ctx, x, y, tileSize, tileSize, "⚡");
-    }
+} catch (e) {
+  console.warn("⚠️ drawImage failed", e);
+  drawPlaceholder(ctx, x, y, tileSize, tileSize, ""); // ✅ blank
+}
   }
 }
 
