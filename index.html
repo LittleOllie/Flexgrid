@@ -640,6 +640,31 @@ body::before{
   line-height: 1.05;            /* tighter so row height stays same */
   font-weight: 900;
 }
+/* Guided glow / pulse */
+.guideGlow{
+  position: relative;
+  outline: none;
+  border-radius: 14px;
+  box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.85), 0 0 22px rgba(46, 204, 113, 0.55);
+  animation: guidePulse 1.15s ease-in-out infinite;
+}
+
+@keyframes guidePulse{
+  0%   { box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.85), 0 0 16px rgba(46, 204, 113, 0.40); transform: scale(1); }
+  50%  { box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.95), 0 0 28px rgba(46, 204, 113, 0.70); transform: scale(1.01); }
+  100% { box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.85), 0 0 16px rgba(46, 204, 113, 0.40); transform: scale(1); }
+}
+
+/* Little green dot */
+.guideGlow::after{
+  content:"";
+  position:absolute;
+  top:-6px; right:-6px;
+  width:12px; height:12px;
+  border-radius:999px;
+  background: rgba(46, 204, 113, 1);
+  box-shadow: 0 0 10px rgba(46, 204, 113, 0.85);
+}
 
   </style>
 </head>
@@ -659,19 +684,22 @@ body::before{
           <label class="lbl">Add wallet</label>
 
           <!-- ✅ iPhone-safe input attributes -->
-          <input
-            id="walletInput"
-            class="input"
-            placeholder="Paste wallet address (0x...) then add"
-            autocomplete="off"
-            autocapitalize="none"
-            spellcheck="false"
-            inputmode="text"
-          />
+<input
+  id="walletInput"
+  class="input guideGlow"
+  placeholder="Paste wallet address (0x...) then add"
+  autocomplete="off"
+  autocapitalize="none"
+  spellcheck="false"
+  inputmode="text"
+/>
+
 
           <div class="walletTools">
             <!-- ✅ button type -->
-            <button id="addWalletBtn" class="btn" type="button">➕ Add wallet</button>
+<button id="addWalletBtn" class="btn guideGlow" type="button">
+  ➕ Add wallet
+</button>
           </div>
 
           <div id="walletList" class="walletList" style="display:none;"></div>
