@@ -1355,7 +1355,7 @@ while (fontSize > minFont) {
 ctx.font = `900 ${fontSize}px system-ui, -apple-system`;
 ctx.textBaseline = "top";
 
-const pad = Math.max(4, Math.round(fontSize * 0.35));
+const wmPad = Math.max(4, Math.round(fontSize * 0.35));
 const textW = ctx.measureText(wmText).width;
 
 const boxW = Math.min(textW + pad * 2, maxW);
