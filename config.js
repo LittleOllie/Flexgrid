@@ -22,10 +22,14 @@ const ALLOW_FRONTEND_CONFIG =
 // ============================================
 
 const FRONTEND_CONFIG = {
-  enabled: ALLOW_FRONTEND_CONFIG,
+  // ⚠️ SECURITY: Frontend config disabled by default
+  // Only enable for development if backend is not available
+  // NEVER hardcode API keys in production code
+  enabled: false, // Disabled for security - use backend config instead
 
-  // ⚠️ Frontend keys are not truly secret — restrict this key in Alchemy by domain.
-  alchemyApiKey: "GYuepn7j7XCslBzxLwO5M",
+  // ⚠️ TEMPORARY: For localhost testing only - REMOVE in production
+  // API key will be provided via backend, but fallback for localhost if backend is down
+  alchemyApiKey: null, // Must be set via backend .env file
 
   // Image proxy (Worker) — this MUST be reachable from GitHub Pages
   workerUrl: "https://loflexgrid.littleollienft.workers.dev/img?url=",
@@ -44,33 +48,77 @@ async function loadConfig() {
   }
 
   // 1) If on localhost and you have a backend config endpoint, try it
-  if (HOSTNAME === "localhost") {
+  if (HOSTNAME === "localhost" || HOSTNAME === "127.0.0.1") {
     try {
+      // ✅ Add timeout using AbortController (more compatible)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
       const response = await fetch("http://localhost:3000/api/config/flex-grid", {
         method: "GET",
         credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const config = await response.json();
         if (config?.alchemyApiKey && config?.workerUrl) {
           console.log("✅ Config: loaded from localhost backend endpoint");
           return config;
+        } else {
+          console.warn("⚠️ Config: Backend returned invalid config (missing alchemyApiKey or workerUrl)", config);
         }
+      } else {
+        const errorText = await response.text().catch(() => '');
+        console.warn(`⚠️ Config: Backend returned status ${response.status}: ${response.statusText}`, errorText.substring(0, 100));
       }
-      console.warn("⚠️ Config: localhost backend endpoint not usable, falling back…");
     } catch (err) {
-      console.warn("⚠️ Config: backend endpoint not available, falling back…", err?.message || err);
+      // Check if it's a timeout vs other error
+      if (err.name === 'AbortError') {
+        console.error("❌ Config: Backend request timed out after 5 seconds. Is backend running?");
+        console.error("   → Check: curl http://localhost:3000/health");
+      } else if (err.message?.includes('fetch') || err.message?.includes('Failed to fetch')) {
+        console.error("❌ Config: Cannot connect to backend. Is it running on port 3000?");
+        console.error("   → Start backend: cd backend && npm run dev");
+        console.error("   → Error:", err.message);
+      } else {
+        console.warn("⚠️ Config: Backend endpoint not available:", err?.message || err);
+      }
+      // Continue to fallback logic below - DON'T THROW YET
     }
   }
 
-  // 2) Frontend config for GitHub Pages / localhost
+  // 2) Frontend config - DISABLED BY DEFAULT for security
+  // Only enable for development if backend is not available
   if (FRONTEND_CONFIG.enabled) {
+    // ⚠️ SECURITY WARNING: Frontend config should only be used in development
+    if (HOSTNAME !== "localhost" && HOSTNAME !== "127.0.0.1") {
+      console.error("❌ SECURITY: Frontend config is not allowed in production!");
+      throw new Error(
+        "Frontend config is disabled for security. " +
+        "Please use backend config endpoint or environment variables."
+      );
+    }
+
+    // Check if API key is set (should not be hardcoded)
+    if (!FRONTEND_CONFIG.alchemyApiKey) {
+      console.error("❌ Config: Frontend API key not set. Use backend config instead.");
+      throw new Error(
+        "API key must be provided via backend config endpoint. " +
+        "See FLEX_GRID_SETUP.md for instructions."
+      );
+    }
+
     const chosenWorker =
       HOSTNAME === "localhost" ? FRONTEND_CONFIG.localWorkerUrl : FRONTEND_CONFIG.workerUrl;
 
-    console.log("✅ Config: using frontend config", {
+    console.warn("⚠️ SECURITY: Using frontend config (development only)", {
       hostname: HOSTNAME,
       workerUrl: chosenWorker,
     });
@@ -81,14 +129,18 @@ async function loadConfig() {
     };
   }
 
-  // 3) Nothing available
-  console.error("❌ Config: not enabled for this hostname:", HOSTNAME);
-  throw new Error(
-    "Configuration not available for this site.\n\n" +
-    `Hostname: ${HOSTNAME}\n\n` +
-    "If you're using GitHub Pages, hostname should end with github.io.\n" +
-    "If you're using a custom domain, add it to ALLOW_FRONTEND_CONFIG in config.js."
-  );
+  // 3) Nothing available - provide helpful error
+  const errorMsg = `Configuration not available for hostname: ${HOSTNAME}\n\n` +
+    `Backend config endpoint failed or is not accessible.\n\n` +
+    `For localhost development:\n` +
+    `  1. Make sure backend is running: cd backend && npm run dev\n` +
+    `  2. Verify backend is accessible: curl http://localhost:3000/health\n` +
+    `  3. Check that ALCHEMY_API_KEY is set in backend/.env file\n\n` +
+    `If you're using GitHub Pages, hostname should end with github.io.\n` +
+    `If you're using a custom domain, add it to ALLOW_FRONTEND_CONFIG in config.js.`;
+  
+  console.error("❌ Config error:", errorMsg);
+  throw new Error(errorMsg);
 }
 
 export { loadConfig, FRONTEND_CONFIG };

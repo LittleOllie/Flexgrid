@@ -16,6 +16,7 @@ const state = {
   wallets: [],
   chain: "eth",
   host: "eth-mainnet.g.alchemy.com",
+  selectedTileIds: new Set(), // ✅ Track selected tiles for export
 };
 
 // ---- Export watermark (single source of truth) ----
@@ -167,29 +168,55 @@ function updateErrorLogDisplay() {
   }
 
   errorLogEl.style.display = "block";
-  errorLogContent.innerHTML = errorLog.errors
-    .map((err) => {
-      const contextText = err.context
-        ? ` <span style="opacity: 0.7;">[${err.context}]</span>`
-        : "";
-      const stackText =
-        err.stack && window.location.hostname === "localhost"
-          ? `<div style="margin-top: 4px; padding-left: 12px; opacity: 0.6; font-size: 10px;">${err.stack
-              .split("\n")
-              .slice(0, 3)
-              .join("<br>")}</div>`
-          : "";
-      return `
-      <div style="padding: 6px 0; border-bottom: 1px solid rgba(244, 67, 54, 0.2);">
-        <div style="color: #f44336; font-weight: 700;">
-          <span style="opacity: 0.7; font-size: 10px;">[${err.timestamp}]</span>${contextText}
-        </div>
-        <div style="margin-top: 2px; color: #ffcdd2;">${err.message}</div>
-        ${stackText}
-      </div>
-    `;
-    })
-    .join("");
+  
+  // ✅ SECURITY: Use DOM methods instead of innerHTML to prevent XSS
+  errorLogContent.textContent = ""; // Clear existing content
+  
+  errorLog.errors.forEach((err) => {
+    const entryDiv = document.createElement("div");
+    entryDiv.style.padding = "6px 0";
+    entryDiv.style.borderBottom = "1px solid rgba(244, 67, 54, 0.2)";
+
+    const headerDiv = document.createElement("div");
+    headerDiv.style.color = "#f44336";
+    headerDiv.style.fontWeight = "700";
+
+    const timestampSpan = document.createElement("span");
+    timestampSpan.style.opacity = "0.7";
+    timestampSpan.style.fontSize = "10px";
+    timestampSpan.textContent = `[${err.timestamp}]`;
+
+    headerDiv.appendChild(timestampSpan);
+
+    if (err.context) {
+      const contextSpan = document.createElement("span");
+      contextSpan.style.opacity = "0.7";
+      contextSpan.textContent = ` [${err.context}]`;
+      headerDiv.appendChild(contextSpan);
+    }
+
+    const messageDiv = document.createElement("div");
+    messageDiv.style.marginTop = "2px";
+    messageDiv.style.color = "#ffcdd2";
+    messageDiv.textContent = err.message || String(err);
+
+    entryDiv.appendChild(headerDiv);
+    entryDiv.appendChild(messageDiv);
+
+    // Only show stack trace in localhost (development)
+    if (err.stack && window.location.hostname === "localhost") {
+      const stackDiv = document.createElement("div");
+      stackDiv.style.marginTop = "4px";
+      stackDiv.style.paddingLeft = "12px";
+      stackDiv.style.opacity = "0.6";
+      stackDiv.style.fontSize = "10px";
+      stackDiv.style.fontFamily = "'Monaco', 'Courier New', monospace";
+      stackDiv.textContent = err.stack.split("\n").slice(0, 3).join("\n");
+      entryDiv.appendChild(stackDiv);
+    }
+
+    errorLogContent.appendChild(entryDiv);
+  });
 }
 
 function clearErrorLog() {
@@ -652,6 +679,9 @@ function buildGrid() {
   const grid = $("grid");
   if (!grid) return;
   grid.innerHTML = "";
+  
+  // ✅ Clear tile selections when rebuilding grid
+  state.selectedTileIds.clear();
 
   const stageTitle = $("stageTitle");
   const stageMeta = $("stageMeta");
@@ -661,11 +691,15 @@ function buildGrid() {
   }
 
   const nftsWithImages = usedItems.filter((item) => item?.image);
-state.imageLoadState.total = nftsWithImages.length;
+  state.imageLoadState.total = nftsWithImages.length;
 
-for (let i = 0; i < usedItems.length; i++) grid.appendChild(makeNFTTile(usedItems[i]));
-const remaining = totalSlots - usedItems.length;
-for (let j = 0; j < remaining; j++) grid.appendChild(makeFillerTile());
+  for (let i = 0; i < usedItems.length; i++) grid.appendChild(makeNFTTile(usedItems[i]));
+  const remaining = totalSlots - usedItems.length;
+  for (let j = 0; j < remaining; j++) grid.appendChild(makeFillerTile());
+  
+  // ✅ Add selection controls after grid is built
+  addTileSelectionControls();
+  updateExportButtonText();
 
 const wm = $("wmGrid");
 if (wm) wm.style.display = "block";
@@ -862,12 +896,46 @@ function makeNFTTile(it) {
 
   const contract = (it?.contract || it?.contractAddress || it?.sourceKey || "").toLowerCase();
   const tokenId = (it?.tokenId || "").toString();
+  
+  // ✅ Create unique tile ID for tracking selections
+  const tileId = `${contract}:${tokenId}`;
+  tile.dataset.tileId = tileId;
   tile.dataset.contract = contract;
   tile.dataset.tokenId = tokenId;
 
   const raw = it?.image || "";
   tile.dataset.kind = raw ? "nft" : "empty";
   tile.dataset.alchemyTried = "0";
+
+  // ✅ Add checkbox overlay for selection (only for NFT tiles with images)
+  if (raw) {
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "tileCheckbox";
+    checkbox.dataset.tileId = tileId;
+    checkbox.checked = state.selectedTileIds.has(tileId); // Restore selection state
+    checkbox.title = "Select for export";
+    
+    checkbox.addEventListener("change", (e) => {
+      const checked = e.target.checked;
+      const tileId = e.target.dataset.tileId;
+      
+      if (checked) {
+        state.selectedTileIds.add(tileId);
+      } else {
+        state.selectedTileIds.delete(tileId);
+      }
+      
+      updateExportButtonText();
+      updateTileSelectionVisual(e.target.closest(".tile"), checked);
+    });
+    
+    // Prevent drag when clicking checkbox
+    checkbox.addEventListener("mousedown", (e) => e.stopPropagation());
+    checkbox.addEventListener("click", (e) => e.stopPropagation());
+    
+    tile.appendChild(checkbox);
+  }
 
   const img = document.createElement("img");
   img.loading = "lazy";
@@ -951,8 +1019,14 @@ function enableDragDrop() {
 async function loadWallets() {
   const chain = $("chainSelect")?.value || "eth";
 
-  if (chain === "solana") return setStatus("Solana coming soon. For now use ETH or Base.");
-  if (chain === "apechain") return setStatus("ApeChain coming soon. For now use ETH or Base.");
+  // ✅ SECURITY: Validate chain input
+  const ALLOWED_CHAINS = ["eth", "base", "polygon"];
+  if (!ALLOWED_CHAINS.includes(chain)) {
+    if (chain === "solana") return setStatus("Solana coming soon. For now use ETH or Base.");
+    if (chain === "apechain") return setStatus("ApeChain coming soon. For now use ETH or Base.");
+    return setStatus(`Invalid chain: ${chain}. Allowed chains: ${ALLOWED_CHAINS.join(", ")}`);
+  }
+  
   if (!state.wallets.length) return setStatus("Add at least one wallet first.");
 
   if (!configLoaded || !ALCHEMY_KEY) {
@@ -1003,7 +1077,21 @@ async function loadWallets() {
     showConnectionStatus(true);
   } catch (err) {
     const errorMsg = err?.message || "Error loading NFTs.";
-    setStatus(`❌ ${errorMsg} Please try again or check your wallet addresses.`);
+    console.error("❌ Wallet load error:", err);
+    
+    // ✅ Better error messages for common issues
+    let userFriendlyMsg = errorMsg;
+    if (errorMsg.includes("403") || errorMsg.includes("origin not on whitelist")) {
+      userFriendlyMsg = "Alchemy API error: Origin not whitelisted. Add localhost:8000 to Alchemy dashboard.";
+    } else if (errorMsg.includes("401") || errorMsg.includes("Unauthorized")) {
+      userFriendlyMsg = "Alchemy API error: Invalid API key. Check backend .env file.";
+    } else if (errorMsg.includes("fetch") || errorMsg.includes("NetworkError")) {
+      userFriendlyMsg = "Network error: Cannot reach Alchemy API. Check your internet connection.";
+    } else if (errorMsg.includes("CORS")) {
+      userFriendlyMsg = "CORS error: Add localhost:8000 to Alchemy allowlist.";
+    }
+    
+    setStatus(`❌ ${userFriendlyMsg} Please try again or check your wallet addresses.`);
     addError(err, "Load Wallets");
     showConnectionStatus(false);
   }
@@ -1025,6 +1113,17 @@ function dedupeNFTs(nfts) {
 }
 
 async function fetchAlchemyNFTs({ wallet, host }) {
+  // ✅ Validate inputs
+  if (!ALCHEMY_KEY) {
+    throw new Error("Alchemy API key not loaded. Check backend config endpoint.");
+  }
+  if (!wallet || !wallet.match(/^0x[a-f0-9]{40}$/i)) {
+    throw new Error(`Invalid wallet address: ${wallet}`);
+  }
+  if (!host) {
+    throw new Error("Alchemy host not configured.");
+  }
+
   const baseUrl = `https://${host}/nft/v3/${ALCHEMY_KEY}/getNFTsForOwner`;
 
   let pageKey = null;
@@ -1038,18 +1137,49 @@ async function fetchAlchemyNFTs({ wallet, host }) {
     url.searchParams.set("pageSize", "100");
     if (pageKey) url.searchParams.set("pageKey", pageKey);
 
-    const res = await fetch(url.toString());
-    if (!res.ok) {
-      const errorText = await res.text().catch(() => "");
-      throw new Error(`Alchemy API error (${res.status}): ${errorText.substring(0, 100)}`);
+    try {
+      const res = await fetch(url.toString());
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "");
+        let errorMsg = `Alchemy API error (${res.status}): ${errorText.substring(0, 200)}`;
+        
+        // ✅ Better error messages for common issues
+        if (res.status === 403 && errorText.includes("whitelist")) {
+          errorMsg = `Alchemy API error (403): Origin not whitelisted. Add "http://localhost:8000" to Alchemy dashboard → API Key → Allowed Origins.`;
+        } else if (res.status === 401) {
+          errorMsg = `Alchemy API error (401): Invalid API key. Check backend .env file (ALCHEMY_API_KEY).`;
+        } else if (res.status === 429) {
+          errorMsg = `Alchemy API error (429): Rate limit exceeded. Please wait a moment and try again.`;
+        }
+        
+        console.error("❌ Alchemy API fetch failed:", {
+          status: res.status,
+          statusText: res.statusText,
+          url: url.toString().replace(ALCHEMY_KEY, "***"),
+          error: errorText.substring(0, 100)
+        });
+        
+        throw new Error(errorMsg);
+      }
+
+      const json = await res.json();
+      if (json.error) {
+        console.error("❌ Alchemy API returned error:", json.error);
+        throw new Error(`Alchemy API error: ${json.error.message || JSON.stringify(json.error)}`);
+      }
+
+      all.push(...(json.ownedNfts || []));
+      if (!json.pageKey) break;
+      pageKey = json.pageKey;
+    } catch (fetchErr) {
+      // ✅ Re-throw with better context
+      if (fetchErr.message.includes("Alchemy API error")) {
+        throw fetchErr; // Already formatted
+      }
+      // Network or other errors
+      console.error("❌ Fetch error:", fetchErr);
+      throw new Error(`Failed to fetch NFTs: ${fetchErr.message}. Check network connection and API key.`);
     }
-
-    const json = await res.json();
-    if (json.error) throw new Error(`Alchemy API error: ${json.error.message || JSON.stringify(json.error)}`);
-
-    all.push(...(json.ownedNfts || []));
-    if (!json.pageKey) break;
-    pageKey = json.pageKey;
   }
 
   return all;
@@ -1292,15 +1422,37 @@ async function exportPNG() {
   try {
     setStatus("Exporting…");
 
-    const tiles = [...document.querySelectorAll("#grid .tile")];
-    if (!tiles.length) return setStatus("Nothing to export");
+    // ✅ Get all tiles or only selected tiles
+    let allTiles = [...document.querySelectorAll("#grid .tile[data-tile-id]")];
+    if (!allTiles.length) {
+      allTiles = [...document.querySelectorAll("#grid .tile")]; // Fallback to all if no selections
+    }
+    
+    // Filter to only selected tiles if any are selected
+    let tilesToExport = allTiles;
+    if (state.selectedTileIds.size > 0) {
+      tilesToExport = allTiles.filter(tile => {
+        const tileId = tile.dataset.tileId;
+        return tileId && state.selectedTileIds.has(tileId);
+      });
+    }
+    
+    if (!tilesToExport.length) {
+      return setStatus("No tiles selected. Select tiles using checkboxes or export all.");
+    }
 
     const grid = $("grid");
     const cols = getComputedGridCols(grid);
-    const rows = Math.ceil(tiles.length / cols);
+    
+    // ✅ Calculate grid dimensions based on selected tiles
+    // For selected tiles, use closest square dimensions
+    const selectedCount = tilesToExport.length;
+    const dims = closestSquareDims(selectedCount);
+    const rows = dims.rows;
+    const effectiveCols = dims.cols;
 
     // TRUE tile size (iOS fix)
-    const rect = tiles[0].getBoundingClientRect();
+    const rect = tilesToExport[0].getBoundingClientRect();
     let tileSize = Math.round(rect.width);
     if (tileSize < 40) tileSize = 120;
 
@@ -1310,7 +1462,7 @@ async function exportPNG() {
 
     const pad = 4;
 
-    const outW = Math.round((cols * tileSize + pad * 2) * scale);
+    const outW = Math.round((effectiveCols * tileSize + pad * 2) * scale);
     const outH = Math.round((rows * tileSize + pad * 2) * scale);
 
     const canvas = document.createElement("canvas");
@@ -1323,12 +1475,12 @@ async function exportPNG() {
 
     ctx.clearRect(0,0,outW,outH);
 
-    // draw tiles
-let i = 0;
-for (let r = 0; r < rows; r++) {
-  for (let c = 0; c < cols; c++) {
-    const tile = tiles[i++];
-    if (!tile) continue;
+    // ✅ Draw selected tiles in grid layout
+    let i = 0;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < effectiveCols; c++) {
+        const tile = tilesToExport[i++];
+        if (!tile) continue;
 
     const img = tile.querySelector("img");
     const x = pad + c * tileSize;
@@ -1350,41 +1502,50 @@ for (let r = 0; r < rows; r++) {
 }
 
 
-// ---- WATERMARK (stable on iPhone + desktop) ----
+// ---- WATERMARK (compact, less intrusive) ----
 const wmText = EXPORT_WATERMARK_TEXT;
 
-// lock to first tile
-const maxW = tileSize * 0.92;
-const minFont = 9;
-const maxFont = Math.round(tileSize * 0.22);
+// ✅ Smaller watermark: reduced from 22% to 12% of tile size
+const maxW = tileSize * 0.65; // Reduced from 0.92 to 0.65 (30% smaller max width)
+const minFont = 8; // Slightly smaller minimum
+const maxFont = Math.round(tileSize * 0.12); // Reduced from 0.22 to 0.12 (45% smaller)
 
 let fontSize = maxFont;
+let textW = 0;
 
+// ✅ Calculate text width first to ensure proper box sizing
 while (fontSize > minFont) {
   ctx.font = `900 ${fontSize}px system-ui, -apple-system`;
-  if (ctx.measureText(wmText).width <= maxW) break;
+  textW = ctx.measureText(wmText).width;
+  if (textW <= maxW) break;
   fontSize--;
 }
 
 ctx.font = `900 ${fontSize}px system-ui, -apple-system`;
 ctx.textBaseline = "top";
 
-const wmPad = Math.max(4, Math.round(fontSize * 0.35));
-const textW = ctx.measureText(wmText).width;
+// ✅ Padding to ensure text is properly inside the box
+const wmPadX = Math.max(4, Math.round(fontSize * 0.4)); // Horizontal padding
+const wmPadY = Math.max(3, Math.round(fontSize * 0.3)); // Vertical padding
 
-const boxW = Math.min(textW + pad * 2, maxW);
-const boxH = fontSize + pad * 2;
+// ✅ Box dimensions: text width + padding on both sides
+const boxW = Math.min(textW + wmPadX * 2, maxW);
+const boxH = fontSize + wmPadY * 2; // Font size + padding top and bottom
 
-const bx = 6;
-const by = 6;
+// ✅ Position offset
+const bx = 4;
+const by = 4;
 
-// background
-ctx.fillStyle = "rgba(0,0,0,0.65)";
+// ✅ Draw background box first
+ctx.fillStyle = "rgba(0,0,0,0.55)";
 ctx.fillRect(bx, by, boxW, boxH);
 
-// text
+// ✅ Draw text inside the box with proper padding
 ctx.fillStyle = "#ffd22e";
-ctx.fillText(wmText, bx + pad, by + pad);
+ctx.textBaseline = "top"; // Top baseline means text starts at y position
+// Text X: left edge + horizontal padding
+// Text Y: top edge + vertical padding (accounts for baseline)
+ctx.fillText(wmText, bx + wmPadX, by + wmPadY);
 
 
     // export
@@ -1410,10 +1571,114 @@ function getComputedGridCols(gridEl) {
   const tmpl = cs.gridTemplateColumns || "";
 
   const m = tmpl.match(/repeat\((\d+),/);
-  if (m) return Math.max(1, parseInt(m[1], 10));
+  const count = m ? parseInt(m[1], 10) : tmpl.split(" ").filter(Boolean).length;
+  return count || 1;
+}
 
-  const parts = tmpl.split(" ").filter(Boolean);
-  return Math.max(1, parts.length);
+// ✅ Tile selection helper functions
+function updateTileSelectionVisual(tile, isSelected) {
+  if (!tile || typeof tile.style === 'undefined') return;
+  
+  // Add visual indicator for selected tiles
+  if (isSelected) {
+    tile.style.border = "3px solid #ffd22e";
+    tile.style.boxShadow = "0 0 12px rgba(255, 210, 46, 0.6)";
+  } else {
+    tile.style.border = "";
+    tile.style.boxShadow = "";
+  }
+}
+
+function updateExportButtonText() {
+  const exportBtn = $("exportBtn");
+  if (!exportBtn) return;
+  
+  const selectedCount = state.selectedTileIds.size;
+  if (selectedCount > 0) {
+    exportBtn.textContent = `📸 Export PNG (${selectedCount} selected)`;
+    exportBtn.title = `Export ${selectedCount} selected NFT${selectedCount !== 1 ? 's' : ''}`;
+  } else {
+    exportBtn.textContent = "📸 Export PNG";
+    exportBtn.title = "Export all NFTs in grid";
+  }
+}
+
+function addTileSelectionControls() {
+  // Remove existing controls if they exist
+  const existingControls = document.getElementById("tileSelectionControls");
+  if (existingControls) existingControls.remove();
+  
+  // Check if there are any tiles with checkboxes
+  const checkboxes = document.querySelectorAll(".tileCheckbox");
+  if (checkboxes.length === 0) return; // No tiles to select
+  
+  // Add controls container
+  const controlsContainer = document.createElement("div");
+  controlsContainer.id = "tileSelectionControls";
+  controlsContainer.style.cssText = `
+    display: flex;
+    gap: 8px;
+    margin: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+  `;
+  
+  const selectAllBtn = document.createElement("button");
+  selectAllBtn.className = "btn";
+  selectAllBtn.textContent = "✅ Select All";
+  selectAllBtn.title = "Select all NFTs for export";
+  selectAllBtn.addEventListener("click", () => {
+    checkboxes.forEach(cb => {
+      cb.checked = true;
+      const tileId = cb.dataset.tileId;
+      if (tileId) {
+        state.selectedTileIds.add(tileId);
+        const tile = cb.closest(".tile");
+        if (tile) updateTileSelectionVisual(tile, true);
+      }
+    });
+    updateExportButtonText();
+  });
+  
+  const selectNoneBtn = document.createElement("button");
+  selectNoneBtn.className = "btn";
+  selectNoneBtn.textContent = "🚫 Deselect All";
+  selectNoneBtn.title = "Deselect all NFTs";
+  selectNoneBtn.addEventListener("click", () => {
+    checkboxes.forEach(cb => {
+      cb.checked = false;
+      const tileId = cb.dataset.tileId;
+      if (tileId) {
+        state.selectedTileIds.delete(tileId);
+        const tile = cb.closest(".tile");
+        if (tile) updateTileSelectionVisual(tile, false);
+      }
+    });
+    updateExportButtonText();
+  });
+  
+  const selectionInfo = document.createElement("span");
+  selectionInfo.style.cssText = `
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: auto;
+  `;
+  selectionInfo.textContent = "💡 Select tiles to export only chosen NFTs";
+  
+  controlsContainer.appendChild(selectAllBtn);
+  controlsContainer.appendChild(selectNoneBtn);
+  controlsContainer.appendChild(selectionInfo);
+  
+  // Insert after grid wrap, before watermark
+  const gridWrap = document.querySelector(".gridWrap");
+  if (gridWrap && gridWrap.parentElement) {
+    gridWrap.parentElement.insertBefore(controlsContainer, gridWrap.nextSibling);
+  }
 }
 
 function loadImage(src) {
@@ -1512,17 +1777,26 @@ async function initializeConfig() {
   } catch (error) {
     const statusEl = $("status");
     if (statusEl) {
-      statusEl.innerHTML = `
-        <div style="color: #ff6b6b; font-weight: 900; margin-bottom: 8px;">
-          ⚠️ Configuration Error
-        </div>
-        <div style="margin-bottom: 8px;">
-          ${error.message}
-        </div>
-        <div style="font-size: 12px; opacity: 0.9;">
-          See <strong>FLEX_GRID_SETUP.md</strong> for setup instructions.
-        </div>
-      `;
+      // ✅ SECURITY: Use DOM methods instead of innerHTML to prevent XSS
+      statusEl.textContent = ""; // Clear existing content
+      
+      const errorTitle = document.createElement("div");
+      errorTitle.style.color = "#ff6b6b";
+      errorTitle.style.fontWeight = "900";
+      errorTitle.style.marginBottom = "8px";
+      errorTitle.textContent = "⚠️ Configuration Error";
+      statusEl.appendChild(errorTitle);
+
+      const errorMsg = document.createElement("div");
+      errorMsg.style.marginBottom = "8px";
+      errorMsg.textContent = error.message || String(error);
+      statusEl.appendChild(errorMsg);
+
+      const hintMsg = document.createElement("div");
+      hintMsg.style.fontSize = "12px";
+      hintMsg.style.opacity = "0.9";
+      hintMsg.textContent = "See FLEX_GRID_SETUP.md for setup instructions.";
+      statusEl.appendChild(hintMsg);
     }
     addError(error, "Config Loading");
 
