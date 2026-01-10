@@ -640,30 +640,20 @@ animation: none !important;
   line-height: 1.05;            /* tighter so row height stays same */
   font-weight: 900;
 }
-/* Guided glow / pulse */
+/* Guided glow (NO pulse) */
 .guideGlow{
   position: relative;
   outline: none;
   border-radius: 14px;
-  box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.85), 0 0 22px rgba(46, 204, 113, 0.55);
-animation: none;
-  pointer-events: auto; /* ✅ THIS LINE */
+  box-shadow:
+    0 0 0 2px rgba(46, 204, 113, 0.90),
+    0 0 22px rgba(46, 204, 113, 0.65);
+  animation: none !important;
+  pointer-events: auto; /* ✅ allows interaction */
 }
 
-@keyframes guidePulse{
-  0%   { box-shadow: 0 0 0 3px rgba(46, 204, 113, 1), 0 0 28px rgba(46, 204, 113, 0.8); }
-  100% { box-shadow: 0 0 0 3px rgba(46, 204, 113, 1), 0 0 28px rgba(46, 204, 113, 0.8); }
-}
-
-
-/* Little green dot */
+/* Little green dot (NO pulse) */
 .guideGlow::after{
-  content:"";
-  position:absolute;
-  top:-6px; right:-6px;
-  width:12px; height:12px;
-  border-radius:999px;
-  background: rgba(46, 204, 113, 1);.guideGlow::after{
   content:"";
   position:absolute;
   top:-6px; right:-6px;
@@ -671,9 +661,7 @@ animation: none;
   border-radius:999px;
   background: rgba(46, 204, 113, 1);
   box-shadow: 0 0 10px rgba(46, 204, 113, 0.85);
-  pointer-events: none; /* ✅ never blocks taps */
-}
-  box-shadow: 0 0 10px rgba(46, 204, 113, 0.85);
+  pointer-events:none; /* ✅ never blocks taps */
 }
 
   </style>
@@ -777,7 +765,8 @@ animation: none;
 
       <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
         <div id="connectionStatus" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(244, 67, 54, 0.15); border: 1px solid rgba(244, 67, 54, 0.3); border-radius: 8px;">
-          <div id="connectionLight" style="width: 12px; height: 12px; background: #f44336; border-radius: 50%; box-shadow: 0 0 8px rgba(244, 67, 54, 0.6); animation: pulse 2s infinite;"></div>
+          <div id="connectionLight" style="width: 12px; height: 12px; background: #f44336; border-radius: 50%; box-shadow: 0 0 10px rgba(244, 67, 54, 0.75);"></div>
+
           <span id="connectionText" style="font-size: 13px; font-weight: 700; color: #f44336;">Not Connected</span>
         </div>
         <div id="status" class="status" style="flex: 1;"></div>
