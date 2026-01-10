@@ -716,6 +716,23 @@ body.dark .guideGlow::after{
   background: rgba(0,255,213,1);
   box-shadow: 0 0 12px rgba(0,255,213,.9);
 }
+.titleHint{
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: 800;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px){
+  .titleHint{
+    display: block;
+    margin-left: 0;
+    margin-top: 2px;
+    white-space: normal;
+    opacity: 0.8;
+  }
+}
 
   </style>
 </head>
@@ -861,7 +878,10 @@ body.dark .guideGlow::after{
     <section class="stageWrap">
       <div id="stage" class="stage">
         <div class="stageHeader">
-          <div id="stageTitle" class="stageTitle">Your Flex Grid</div>
+<div id="stageTitle" class="stageTitle">
+  Little Ollie Flex Grid
+  <span class="titleHint">Edit size • Drag to reorder</span>
+</div>
           <div id="stageMeta" class="stageMeta"></div>
         </div>
 

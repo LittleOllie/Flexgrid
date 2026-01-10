@@ -235,6 +235,12 @@ function updateErrorLogDisplay() {
   const errorLogEl = $("errorLog");
   const errorLogContent = $("errorLogContent");
 
+  // ✅ hide the panel for normal users
+  if (!SHOW_ERROR_PANEL) {
+    if (errorLogEl) errorLogEl.style.display = "none";
+    return;
+  }
+
   if (!errorLogEl || !errorLogContent) return;
 
   if (errorLog.errors.length === 0) {
@@ -267,6 +273,7 @@ function updateErrorLogDisplay() {
     })
     .join("");
 }
+
 
 function clearErrorLog() {
   errorLog.errors = [];
@@ -361,6 +368,8 @@ function isAlreadyProxied(url) {
 function getIpfsPath(url) {
   if (!url) return "";
   const s = String(url).trim();
+
+const SHOW_ERROR_PANEL = false; // set true if you ever want it back
 
   if (s.startsWith("ipfs://")) {
     let p = s.slice("ipfs://".length);
@@ -718,12 +727,15 @@ let items = flattenItems(chosen); // ✅ always fill in order
     cols = choice.cols;
     totalSlots = choice.cap;
     usedItems = items.slice(0, totalSlots);
-  } else {
-const dims = bestFitDims(items.length, 12); // tweak 12 if you want
-rows = dims.rows;
-cols = dims.cols;
-    totalSlots = rows * cols;
-    usedItems = items;
+} else {
+  // ✅ Auto = closest square n×n
+  const side = Math.ceil(Math.sqrt(items.length));
+  rows = side;
+  cols = side;
+  totalSlots = rows * cols;
+  usedItems = items; // we will fill remaining with blank tiles
+}
+
   }
 
   setGridColumns(cols);
@@ -734,7 +746,9 @@ cols = dims.cols;
 
   const stageTitle = $("stageTitle");
   const stageMeta = $("stageMeta");
-  if (stageTitle) stageTitle.textContent = "Little Ollie Flex Grid";
+if (stageTitle) {
+  stageTitle.innerHTML = `Little Ollie Flex Grid <span class="titleHint">Edit size • Drag to reorder</span>`;
+}
   if (stageMeta) {
     stageMeta.textContent = `${state.wallets.length} wallet(s) • ${chosen.length} collection(s) • ${usedItems.length} NFT(s) • grid ${rows}×${cols}`;
   }
