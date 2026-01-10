@@ -647,6 +647,7 @@ animation: none !important;
   border-radius: 14px;
   box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.85), 0 0 22px rgba(46, 204, 113, 0.55);
 animation: none;
+  pointer-events: auto; /* ✅ THIS LINE */
 }
 
 @keyframes guidePulse{
@@ -662,7 +663,16 @@ animation: none;
   top:-6px; right:-6px;
   width:12px; height:12px;
   border-radius:999px;
+  background: rgba(46, 204, 113, 1);.guideGlow::after{
+  content:"";
+  position:absolute;
+  top:-6px; right:-6px;
+  width:12px; height:12px;
+  border-radius:999px;
   background: rgba(46, 204, 113, 1);
+  box-shadow: 0 0 10px rgba(46, 204, 113, 0.85);
+  pointer-events: none; /* ✅ never blocks taps */
+}
   box-shadow: 0 0 10px rgba(46, 204, 113, 0.85);
 }
 
