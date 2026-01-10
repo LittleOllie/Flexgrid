@@ -338,6 +338,8 @@ function enableButtons() {
   if (loadBtn) loadBtn.disabled = !hasWallets;
   if (buildBtn) buildBtn.disabled = state.selectedKeys.size === 0;
   if (exportBtn) exportBtn.disabled = true;
+
+  updateGuideGlow(); // ✅ ADD THIS LINE
 }
 
 function setGridColumns(cols) {
