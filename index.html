@@ -65,17 +65,17 @@
     }
 
     html,body{ height:100%; margin:0; }
-    body{
 body{
-  font-family: 'Baloo 2', system-ui, sans-serif;
-}      background: radial-gradient(circle at top, var(--bg1), var(--bg2));
-      color:#fff;
-      display:flex;
-      justify-content:center;
-      align-items:flex-start;
-      padding: 14px 12px 22px;
-      overscroll-behavior:none;
-    }
+  font-family: "Baloo 2", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  background: radial-gradient(circle at top, var(--bg1), var(--bg2));
+  color:#fff;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  padding: 14px 12px 22px;
+  overscroll-behavior:none;
+}
+
 
     .wrap{ width:min(1120px, 98vw); }
 
@@ -543,6 +543,10 @@ h2{
 .stageTitle{
   font-size: 18px;
 }
+/* FORCE Baloo everywhere (wins over earlier rules) */
+html, body, button, input, select, textarea {
+  font-family: "Baloo 2", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+}
 
   </style>
 </head>
@@ -787,6 +791,6 @@ h2{
     })();
   </script>
 
-<script type="module" src="./app.js?v=20260109-37"></script>
+<script type="module" src="./app.js?v=20260109-38"></script>
 </body>
 </html>
