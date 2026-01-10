@@ -594,7 +594,7 @@ body::before{
   background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,.35) 50%, transparent 100%);
   transform: rotate(18deg);
   opacity: 0;
-  animation: btnSweep 3.8s ease-in-out infinite;
+animation: none !important;
   pointer-events:none;
 }
 @keyframes btnSweep{
@@ -646,14 +646,14 @@ body::before{
   outline: none;
   border-radius: 14px;
   box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.85), 0 0 22px rgba(46, 204, 113, 0.55);
-  animation: guidePulse 1.15s ease-in-out infinite;
+animation: none;
 }
 
 @keyframes guidePulse{
-  0%   { box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.85), 0 0 16px rgba(46, 204, 113, 0.40); transform: scale(1); }
-  50%  { box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.95), 0 0 28px rgba(46, 204, 113, 0.70); transform: scale(1.01); }
-  100% { box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.85), 0 0 16px rgba(46, 204, 113, 0.40); transform: scale(1); }
+  0%   { box-shadow: 0 0 0 3px rgba(46, 204, 113, 1), 0 0 28px rgba(46, 204, 113, 0.8); }
+  100% { box-shadow: 0 0 0 3px rgba(46, 204, 113, 1), 0 0 28px rgba(46, 204, 113, 0.8); }
 }
+
 
 /* Little green dot */
 .guideGlow::after{
