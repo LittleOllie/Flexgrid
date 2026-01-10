@@ -663,6 +663,47 @@ animation: none !important;
   box-shadow: 0 0 10px rgba(46, 204, 113, 0.85);
   pointer-events:none; /* ✅ never blocks taps */
 }
+/* ==========================
+   DARK / NEON THEME (toggle)
+   ========================== */
+body.dark{
+  /* Background */
+  --bg1:#05060f;
+  --bg2:#0b0f2a;
+
+  /* Panels */
+  --panel: rgba(0,0,0,.55);
+  --panel2: rgba(0,0,0,.78);
+  --stroke: rgba(0,255,213,.22);
+  --shadow: 0 18px 40px rgba(0,0,0,.55);
+
+  /* Button becomes neon */
+  --btnYellow:#00ffd5;
+  --btnYellow2:#00c2a3;
+  --btnText:#001a14;
+
+  /* Text */
+  --muted: rgba(255,255,255,.78);
+  --loBlueLine: rgba(0,255,213,0.55);
+}
+
+/* Optional: make stage/grid feel more “arcade neon” in dark mode */
+body.dark .stage{
+  background: radial-gradient(circle at top, rgba(0,255,213,.16), rgba(11,15,42,.55)) !important;
+  border-color: rgba(0,255,213,.25) !important;
+}
+
+body.dark .panel{
+  border-color: rgba(0,255,213,.18) !important;
+}
+
+body.dark .btn, body.dark .btnSmall{
+  box-shadow:
+    0 0 0 1px rgba(0,255,213,.35),
+    0 10px 18px rgba(0,0,0,.35),
+    0 0 18px rgba(0,255,213,.28),
+    inset 0 2px 0 rgba(255,255,255,.18);
+}
 
   </style>
 </head>
@@ -759,6 +800,7 @@ animation: none !important;
         <button id="loadBtn" class="btn" type="button" disabled>🔍 Load wallet(s)</button>
         <button id="buildBtn" class="btn" type="button" disabled>🧩 Build grid</button>
         <button id="exportBtn" class="btn" type="button" disabled>📸 Export PNG</button>
+<button id="themeToggle" class="btn" type="button">🌙 Dark Mode</button>
 <button id="retryBtn" class="btn" type="button">🔄 Retry missing</button>
 
       </div>
@@ -865,7 +907,42 @@ animation: none !important;
   </script>
 
   <!-- ✅ Watermark auto-scale + lock width to 1 tile (fixes overlap into tile #2) -->
+<script>
+  (function(){
+    const key = "lo_theme";
+    const btn = document.getElementById("themeToggle");
+    if(!btn) return;
+
+    const setLabel = () => {
+      btn.textContent = document.body.classList.contains("dark")
+        ? "☀️ Light Mode"
+        : "🌙 Dark Mode";
+    };
+
+    // 1) Load saved theme, otherwise use system preference
+    const saved = localStorage.getItem(key);
+    if(saved === "dark"){
+      document.body.classList.add("dark");
+    }else if(saved === "light"){
+      document.body.classList.remove("dark");
+    }else{
+      // No saved preference -> match device
+      if(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches){
+        document.body.classList.add("dark");
+      }
+    }
+    setLabel();
+
+    // 2) Toggle on click + persist
+    btn.addEventListener("click", () => {
+      document.body.classList.toggle("dark");
+      localStorage.setItem(key, document.body.classList.contains("dark") ? "dark" : "light");
+      setLabel();
+    });
+  })();
+</script>
  
+
 <script type="module" src="./app.js?v=20260109-31"></script>
 </body>
 </html>
