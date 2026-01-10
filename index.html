@@ -774,12 +774,23 @@ body.dark .guideGlow::after{
    ========================== */
 
 /* Show tile.png by default while loading */
+/* Placeholder via overlay (allows opacity control) */
 .tile{
-  background-image: url("./tile.png") !important;
-  background-size: cover !important;
-  background-position: center !important;
-  background-repeat: no-repeat !important;
+  position: relative;
+  overflow: hidden;
 }
+
+/* actual placeholder layer */
+.tile::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background: url("./tile.png") center/cover no-repeat;
+  opacity: 0.6;           /* ✅ 60% visible */
+  pointer-events:none;
+  transition: opacity .15s ease;
+}
+
 
 /* Hide the <img> until it successfully loads */
 .tile img{
