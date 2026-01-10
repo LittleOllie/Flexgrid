@@ -347,7 +347,7 @@ function ellipsizeToWidth(ctx, text, maxWidth) {
 }
 
 function syncWatermarkDOMToOneTile() {
-  const wm = document.getElementById("wmGrid");
+  const wm = document.getElementById("wmGrid"); // now an <img>
   const grid = document.getElementById("grid");
   if (!wm || !grid) return;
 
@@ -357,58 +357,26 @@ function syncWatermarkDOMToOneTile() {
     return;
   }
 
-  // keep watermark as overlay (survives rebuild)
+  // Keep watermark as overlay (survives rebuild)
   const gridWrap = grid.parentElement; // .gridWrap
   if (wm.parentElement !== gridWrap) gridWrap.appendChild(wm);
 
   wm.style.display = "block";
-  wm.textContent = "⚡ Powered by Little Ollie Studio";
 
-  // badge base styling (always)
+  // ✅ bang on top-left corner of the grid
   wm.style.position = "absolute";
-  wm.style.left = "2px";
-  wm.style.top = "2px";
+  wm.style.left = "0px";
+  wm.style.top = "0px";
   wm.style.zIndex = "9999";
   wm.style.pointerEvents = "none";
 
-  wm.style.background = "rgba(0,0,0,0.35)";
-  wm.style.border = "1px solid rgba(255,255,255,0.22)";
-  wm.style.borderRadius = "10px";
-  wm.style.boxShadow = "0 6px 16px rgba(0,0,0,0.25)";
-
-  wm.style.color = "rgba(255,255,255,0.95)";
-  wm.style.fontWeight = "900";
-  wm.style.letterSpacing = ".2px";
-  wm.style.lineHeight = "1";
-  wm.style.whiteSpace = "nowrap";
-
-  // lock to tile width
+  // ✅ lock watermark width to FIRST tile width
   const tileW = firstTile.getBoundingClientRect().width || 0;
-  const maxW = Math.max(70, Math.floor(tileW - 4));
-  wm.style.maxWidth = maxW + "px";
-
-  // ✅ compute font + padding from tile size (so they always match)
-  const fontPx = Math.max(9, Math.min(14, Math.round(tileW * 0.08)));
-  const padY = Math.max(2, Math.round(fontPx * 0.45));
-  const padX = Math.max(4, Math.round(fontPx * 0.85));
-
-  wm.style.fontSize = fontPx + "px";
-  wm.style.padding = `${padY}px ${padX}px`;
-
-  // ✅ if still too wide, gently shrink font + padding together
-  requestAnimationFrame(() => {
-    const wNow = wm.getBoundingClientRect().width || 0;
-    if (wNow > maxW) {
-      const ratio = maxW / wNow;
-      const newFont = Math.max(8, Math.floor(fontPx * ratio));
-      const newPadY = Math.max(2, Math.round(newFont * 0.45));
-      const newPadX = Math.max(4, Math.round(newFont * 0.85));
-
-      wm.style.fontSize = newFont + "px";
-      wm.style.padding = `${newPadY}px ${newPadX}px`;
-    }
-  });
+  const w = Math.max(40, Math.floor(tileW)); // minimum so it's never tiny
+  wm.style.width = w + "px";
+  wm.style.height = "auto"; // keep PNG aspect ratio
 }
+
 
 // ---------- Wallet list ----------
 function normalizeWallet(w) {
@@ -1350,42 +1318,22 @@ for (let r = 0; r < rows; r++) {
 }
 
 
-// ---- WATERMARK (stable on iPhone + desktop) ----
-const wmText = EXPORT_WATERMARK_TEXT;
+// ✅ WATERMARK IMAGE (same as live)
+try {
+  const wmImg = await loadImageWithRetry("./pblo.png", 2, 8000);
 
-// lock to first tile
-const maxW = tileSize * 0.92;
-const minFont = 9;
-const maxFont = Math.round(tileSize * 0.22);
+  // draw it inside the first tile area (top-left of export)
+  const x = pad;      // aligns to first tile edge
+  const y = pad;
 
-let fontSize = maxFont;
+  const w = tileSize; // match tile width exactly
+  const ratio = wmImg.naturalHeight / wmImg.naturalWidth;
+  const h = Math.round(w * ratio);
 
-while (fontSize > minFont) {
-  ctx.font = `900 ${fontSize}px system-ui, -apple-system`;
-  if (ctx.measureText(wmText).width <= maxW) break;
-  fontSize--;
+  ctx.drawImage(wmImg, x, y, w, h);
+} catch (e) {
+  console.warn("Watermark PNG failed to load for export:", e);
 }
-
-ctx.font = `900 ${fontSize}px system-ui, -apple-system`;
-ctx.textBaseline = "top";
-
-const wmPad = Math.max(4, Math.round(fontSize * 0.35));
-const textW = ctx.measureText(wmText).width;
-
-const boxW = Math.min(textW + pad * 2, maxW);
-const boxH = fontSize + pad * 2;
-
-const bx = 6;
-const by = 6;
-
-// background
-ctx.fillStyle = "rgba(0,0,0,0.65)";
-ctx.fillRect(bx, by, boxW, boxH);
-
-// text
-ctx.fillStyle = "#ffd22e";
-ctx.fillText(wmText, bx + pad, by + pad);
-
 
     // export
     const url = canvas.toDataURL("image/png",1);
