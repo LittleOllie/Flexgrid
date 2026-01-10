@@ -543,10 +543,33 @@ function mixEvenly(chosen) {
   return out;
 }
 
-function closestSquareDims(n) {
-  const side = Math.max(1, Math.ceil(Math.sqrt(n)));
-  return { rows: side, cols: side };
+function bestFitDims(n, maxCols = 12) {
+  // Choose rows/cols that:
+  // 1) wastes the fewest slots (rows*cols - n)
+  // 2) is as "square-ish" as possible (aspect close to 1)
+  // 3) prefers more columns (looks nicer on desktop) if tied
+
+  const minCols = 2;
+  let best = { rows: 1, cols: n, waste: Infinity, aspect: Infinity };
+
+  for (let cols = minCols; cols <= maxCols; cols++) {
+    const rows = Math.ceil(n / cols);
+    const cap = rows * cols;
+    const waste = cap - n;
+    const aspect = Math.max(cols / rows, rows / cols); // 1 = perfect square
+
+    // Score: waste dominates, then aspect
+    const better =
+      waste < best.waste ||
+      (waste === best.waste && aspect < best.aspect) ||
+      (waste === best.waste && aspect === best.aspect && cols > best.cols);
+
+    if (better) best = { rows, cols, waste, aspect };
+  }
+
+  return { rows: best.rows, cols: best.cols };
 }
+
 
 function clampInt(v, min, max, fallback) {
   const n = Number(v);
@@ -592,8 +615,9 @@ function buildGrid() {
     return;
   }
 
-  const mixMode = $("mixMode")?.value || "mix";
-  let items = mixMode === "mix" ? mixEvenly(chosen) : flattenItems(chosen);
+// const mixMode = $("mixMode")?.value || "mix";
+let items = flattenItems(chosen); // ✅ always fill in order
+
 
   const HARD_CAP = 400;
   if (items.length > HARD_CAP) items = items.slice(0, HARD_CAP);
@@ -608,9 +632,9 @@ function buildGrid() {
     totalSlots = choice.cap;
     usedItems = items.slice(0, totalSlots);
   } else {
-    const dims = closestSquareDims(items.length);
-    rows = dims.rows;
-    cols = dims.cols;
+const dims = bestFitDims(items.length, 12); // tweak 12 if you want
+rows = dims.rows;
+cols = dims.cols;
     totalSlots = rows * cols;
     usedItems = items;
   }
