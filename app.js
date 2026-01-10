@@ -1399,7 +1399,6 @@ function loadImage(src) {
     img.src = src;
   });
 }
-
 // ---------- Events + Retry ----------
 (function bindEvents() {
   const walletInput = $("walletInput");
@@ -1435,6 +1434,13 @@ function loadImage(src) {
     }
   }
 
+  // ✅ Select all / none (Collections panel)
+  const selectAllBtn = $("selectAllBtn");
+  const selectNoneBtn = $("selectNoneBtn");
+  if (selectAllBtn) selectAllBtn.addEventListener("click", () => setAllCollections(true));
+  if (selectNoneBtn) selectNoneBtn.addEventListener("click", () => setAllCollections(false));
+
+  // Main actions
   const loadBtn = $("loadBtn");
   const buildBtn = $("buildBtn");
   const exportBtn = $("exportBtn");
@@ -1442,6 +1448,17 @@ function loadImage(src) {
   if (buildBtn) buildBtn.addEventListener("click", buildGrid);
   if (exportBtn) exportBtn.addEventListener("click", exportPNG);
 
+  // ✅ Retry missing (if button exists)
+  const retryBtn = $("retryBtn");
+  if (retryBtn && typeof retryMissingTiles === "function") {
+    retryBtn.addEventListener("click", retryMissingTiles);
+  }
+
+  // ✅ Clear error log (if button exists)
+  const clearErrBtn = $("clearErrorLog");
+  if (clearErrBtn) clearErrBtn.addEventListener("click", clearErrorLog);
+
+  // Watermark keeps fitting on resize
   window.addEventListener("resize", syncWatermarkDOMToOneTile);
   window.addEventListener("orientationchange", syncWatermarkDOMToOneTile);
 })();
