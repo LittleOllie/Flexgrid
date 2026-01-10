@@ -1064,11 +1064,31 @@ async function loadWallets() {
       allNfts.push(...(nfts || []));
     }
 const deduped = dedupeNFTs(allNfts);
-
-// ✅ NEW: enrich questing NFTs so we can split Quirkies vs Quirklings if metadata allows it
-await enrichQuestingLabels(deduped);
-
 const grouped = groupByCollection(deduped);
+
+state.collections = grouped;
+state.selectedKeys = new Set();
+renderCollectionsList();
+showControlsPanel(true);
+updateGuideGlow();
+
+setStatus(`Loaded ${state.wallets.length} wallet(s) ✅ Found ${grouped.length} collections`);
+showConnectionStatus(true);
+
+// ✅ OPTIONAL: do questing enrichment AFTER everything shows
+enrichQuestingLabels(deduped)
+  .then(() => {
+    // regroup + re-render only if labels were found
+    const regrouped = groupByCollection(deduped);
+    state.collections = regrouped;
+    state.selectedKeys = new Set();
+    renderCollectionsList();
+    setStatus(`Collections updated ✅ (${regrouped.length} collections)`);
+  })
+  .catch(() => {
+    // silently ignore - don’t scare users
+  });
+
 
 
 
@@ -1265,7 +1285,7 @@ const targets = nfts.filter(n =>
   // Limit concurrency (reuse your limiter idea)
   const metaLimit = createLimiter(2);
 
-  setStatus(`Questing detected… checking metadata (${batch.length} items)`);
+setStatus(`Finishing collection details… (${batch.length})`);
 
   await Promise.all(batch.map(nft => metaLimit(async () => {
 const tokenUri =
