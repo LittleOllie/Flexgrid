@@ -690,9 +690,10 @@ function makeMissingInner() {
 }
 
 function makeFillerInner() {
+  // truly blank filler (no LO text)
   const d = document.createElement("div");
   d.className = "fillerText";
-  d.textContent = "LO ⚡";
+  d.textContent = ""; // important
   return d;
 }
 
@@ -1119,22 +1120,27 @@ async function loadImageWithRetry(src, tries = 2, timeoutMs = 25000) {
   throw lastErr || new Error("Image failed: " + src);
 }
 
-function drawPlaceholder(ctx, x, y, w, h, label = "Missing") {
+function drawPlaceholder(ctx, x, y, w, h, label = "") {
   ctx.save();
   ctx.globalAlpha = 1;
-  ctx.fillStyle = "rgba(0,0,0,0.25)";
+
+  // subtle background so you still see the tile boundary
+  ctx.fillStyle = "rgba(0,0,0,0.18)";
   ctx.fillRect(x, y, w, h);
 
-  ctx.strokeStyle = "rgba(255,255,255,0.35)";
-  ctx.lineWidth = Math.max(2, Math.floor(w * 0.02));
-  ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  ctx.strokeStyle = "rgba(255,255,255,0.18)";
+  ctx.lineWidth = Math.max(1, Math.floor(w * 0.01));
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
 
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
-  const fontPx = Math.max(14, Math.floor(w * 0.10));
-  ctx.font = `800 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, x + w / 2, y + h / 2);
+  if (label) {
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    const fontPx = Math.max(14, Math.floor(w * 0.10));
+    ctx.font = `800 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, x + w / 2, y + h / 2);
+  }
+
   ctx.restore();
 }
 
@@ -1159,52 +1165,50 @@ function drawWatermarkAcrossTile(ctx, x, y, w, h) {
 
   ctx.save();
 
-  // position near top-left of the first tile
-  const padX = Math.max(3, Math.round(w * 0.02));
-  const padY = Math.max(3, Math.round(h * 0.02));
-  const bx = x + padX;
-  const by = y + padY;
+  // Inside-tile padding
+  const outerPad = Math.max(2, Math.round(w * 0.02));
+  const bx = x + outerPad;
+  const by = y + outerPad;
 
-  // font sizing
-  let fontPx = Math.max(11, Math.floor(w * 0.085));
-  const minFontPx = 9;
+  // HARD clamp: badge must fit inside the tile
+  const maxBoxW = Math.max(40, Math.floor(w - outerPad * 2));
 
-  const fontStack =
-    "system-ui, -apple-system, Segoe UI, Roboto, Arial, Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji";
-
+  const fontStack = "system-ui, -apple-system, Segoe UI, Roboto, Arial";
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
 
-  // padding inside badge
-  const padInsideX = () => Math.round(fontPx * 0.75);
-  const padInsideY = () => Math.round(fontPx * 0.55);
+  // Start size then shrink-to-fit
+  let fontPx = Math.max(9, Math.min(14, Math.floor(w * 0.08)));
+  const minFontPx = 8;
 
-  // emoji size + spacing
-  const boltSize = Math.round(fontPx * 1.05);
-  const boltGap = Math.round(fontPx * 0.35);
+  const boltSize = () => Math.round(fontPx * 1.0);
+  const gap = () => Math.round(fontPx * 0.35);
+  const padX = () => Math.round(fontPx * 0.75);
+  const padY = () => Math.round(fontPx * 0.55);
 
-  const maxBoxW = Math.round(w * 0.92);
+  let fittedText = text;
 
-  // shrink-to-fit
-  while (fontPx > minFontPx) {
+  while (fontPx >= minFontPx) {
     ctx.font = `900 ${fontPx}px ${fontStack}`;
-    const textW = ctx.measureText(text).width;
-    const boxW = Math.round(textW + padInsideX() * 2 + boltSize + boltGap);
+
+    const availableTextW = maxBoxW - (padX() * 2) - boltSize() - gap();
+    fittedText = ellipsizeToWidth(ctx, text, Math.max(10, availableTextW));
+
+    const textW = ctx.measureText(fittedText).width;
+    const boxW = Math.round(padX() * 2 + boltSize() + gap() + textW);
+
     if (boxW <= maxBoxW) break;
     fontPx--;
   }
 
   ctx.font = `900 ${fontPx}px ${fontStack}`;
-  const textW = ctx.measureText(text).width;
+  const textW = ctx.measureText(fittedText).width;
 
-  const boxPadX = padInsideX();
-  const boxPadY = padInsideY();
+  const boxW = Math.min(maxBoxW, Math.round(padX() * 2 + boltSize() + gap() + textW));
+  const boxH = Math.round(Math.max(fontPx, boltSize()) + padY() * 2);
 
-  const boxW = Math.min(maxBoxW, Math.round(textW + boxPadX * 2 + boltSize + boltGap));
-  const boxH = Math.round(Math.max(fontPx, boltSize) + boxPadY * 2);
-
-  // rounded rect badge
-  const r = Math.max(7, Math.round(fontPx * 0.7));
+  // Rounded badge
+  const r = Math.max(6, Math.round(fontPx * 0.7));
   ctx.fillStyle = "rgba(0,0,0,0.35)";
   ctx.strokeStyle = "rgba(255,255,255,0.22)";
   ctx.lineWidth = Math.max(1, Math.round(w * 0.006));
@@ -1223,15 +1227,15 @@ function drawWatermarkAcrossTile(ctx, x, y, w, h) {
   ctx.fill();
   ctx.stroke();
 
-  // ⚡ emoji (yellow)
-  ctx.font = `900 ${boltSize}px ${fontStack}`;
-  ctx.fillText("⚡", bx + boxPadX, by + boxPadY);
+  // Lightning (vector shape, consistent everywhere)
+  ctx.fillStyle = "#ffd22e";
+  drawLightningIcon(ctx, bx + padX(), by + padY() + 1, boltSize());
 
-  // text
-  ctx.font = `900 ${fontPx}px ${fontStack}`;
-  const textX = bx + boxPadX + boltSize + boltGap;
+  // Text
   ctx.fillStyle = "rgba(255,255,255,0.92)";
-  ctx.fillText(text, textX, by + boxPadY);
+  ctx.font = `900 ${fontPx}px ${fontStack}`;
+  const textX = bx + padX() + boltSize() + gap();
+  ctx.fillText(fittedText, textX, by + padY());
 
   ctx.restore();
 }
@@ -1345,7 +1349,7 @@ async function saveCanvasPNG(canvas, filename = "little-ollie-grid.png") {
 
         // Filler or no-src
         if (!bestSrc || kind === "empty") {
-          drawPlaceholder(ctx, x, y, tileSize, tileSize, "LO ⚡");
+drawPlaceholder(ctx, x, y, tileSize, tileSize, "");
           continue;
         }
 
