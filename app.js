@@ -1284,6 +1284,28 @@ async function saveCanvasPNG(canvas, filename = "little-ollie-grid.png") {
   setTimeout(() => URL.revokeObjectURL(url), 8000);
 }
 
+function isImgUsable(img){
+  return img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0;
+}
+
+function drawPlaceholder(ctx, x, y, w, h, label="MISSING"){
+  // background
+  ctx.fillStyle = "rgba(255,255,255,0.06)";
+  ctx.fillRect(x, y, w, h);
+
+  // border
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x+1, y+1, w-2, h-2);
+
+  // text
+  ctx.fillStyle = "rgba(255,255,255,0.75)";
+  ctx.font = `700 ${Math.max(10, Math.round(w*0.12))}px system-ui, -apple-system`;
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, x + Math.round(w*0.08), y + Math.round(h*0.5));
+}
+
+
 async function exportPNG() {
   try {
     setStatus("Exporting…");
@@ -1320,21 +1342,31 @@ async function exportPNG() {
     ctx.clearRect(0,0,outW,outH);
 
     // draw tiles
-    let i = 0;
-    for(let r=0;r<rows;r++){
-      for(let c=0;c<cols;c++){
-        const tile = tiles[i++];
-        if(!tile) continue;
+let i = 0;
+for (let r = 0; r < rows; r++) {
+  for (let c = 0; c < cols; c++) {
+    const tile = tiles[i++];
+    if (!tile) continue;
 
-        const img = tile.querySelector("img");
-        if(!img) continue;
+    const img = tile.querySelector("img");
+    const x = pad + c * tileSize;
+    const y = pad + r * tileSize;
 
-        const x = pad + c * tileSize;
-        const y = pad + r * tileSize;
-
-        ctx.drawImage(img, x, y, tileSize, tileSize);
-      }
+    // broken image protection (iPhone fix)
+    if (!isImgUsable(img)) {
+      drawPlaceholder(ctx, x, y, tileSize, tileSize, "⚡");
+      continue;
     }
+
+    try {
+      ctx.drawImage(img, x, y, tileSize, tileSize);
+    } catch (e) {
+      console.warn("⚠️ drawImage failed", e);
+      drawPlaceholder(ctx, x, y, tileSize, tileSize, "⚡");
+    }
+  }
+}
+
 
 // ---- WATERMARK (stable on iPhone + desktop) ----
 const wmText = EXPORT_WATERMARK_TEXT;
