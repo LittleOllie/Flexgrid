@@ -1,40 +1,37 @@
 /**
  * Flex Grid Configuration (Simple + Reliable)
  *
- * This version is designed to work on:
+ * Works on:
  * - GitHub Pages (littleollie.github.io)
  * - localhost
- *
- * If you later add a real backend, you can switch to backend-only config.
+ * - LAN IP (for iPhone testing)
  */
 
 const IS_BROWSER = typeof window !== "undefined";
 const HOSTNAME = IS_BROWSER ? window.location.hostname : "";
 
-// ✅ Treat these as “allowed dev-style hosting” (GitHub Pages + localhost)
-// Add your custom domain here if you use one, e.g. "flexgrid.littleollie.com"
+// 👇 EDIT THIS if your IP changes (optional, not needed for GitHub Pages)
+const LOCAL_IPS = [
+  "127.0.0.1",
+  "localhost",
+  "192.168.0.15"
+];
+
+// ✅ Allowed frontends (GitHub Pages + local dev)
 const ALLOW_FRONTEND_CONFIG =
+  HOSTNAME === "littleollie.github.io" ||
+  HOSTNAME.endsWith(".github.io") ||
   HOSTNAME === "localhost" ||
-  HOSTNAME.endsWith("github.io");
+  HOSTNAME === "127.0.0.1";
 
 // ============================================
 // FRONTEND CONFIG (USED ON GitHub Pages + localhost)
 // ============================================
 
 const FRONTEND_CONFIG = {
-  // ⚠️ SECURITY: Frontend config disabled by default
-  // Only enable for development if backend is not available
-  // NEVER hardcode API keys in production code
-  enabled: false, // Disabled for security - use backend config instead
-
-  // ⚠️ TEMPORARY: For localhost testing only - REMOVE in production
-  // API key will be provided via backend, but fallback for localhost if backend is down
-  alchemyApiKey: null, // Must be set via backend .env file
-
-  // Image proxy (Worker) — this MUST be reachable from GitHub Pages
+  enabled: false, // turn TRUE only for local dev
+  alchemyApiKey: null, // DEV ONLY (don’t commit keys)
   workerUrl: "https://loflexgrid.littleollienft.workers.dev/img?url=",
-
-  // Optional local proxy (only if you run it)
   localWorkerUrl: "http://localhost:3000/api/proxy/image?url=",
 };
 
@@ -43,24 +40,18 @@ const FRONTEND_CONFIG = {
 // ============================================
 
 async function loadConfig() {
-  if (!IS_BROWSER) {
-    throw new Error("Config can only be loaded in the browser.");
-  }
+  if (!IS_BROWSER) throw new Error("Config can only be loaded in the browser.");
 
-  // 1) If on localhost and you have a backend config endpoint, try it
+  // 1) Try backend first (localhost only)
   if (HOSTNAME === "localhost" || HOSTNAME === "127.0.0.1") {
     try {
-      // ✅ Add timeout using AbortController (more compatible)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
 
       const response = await fetch("http://localhost:3000/api/config/flex-grid", {
         method: "GET",
         credentials: "same-origin",
-        headers: { 
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        },
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
         signal: controller.signal,
       });
 
@@ -69,77 +60,53 @@ async function loadConfig() {
       if (response.ok) {
         const config = await response.json();
         if (config?.alchemyApiKey && config?.workerUrl) {
-          console.log("✅ Config: loaded from localhost backend endpoint");
+          console.log("✅ Config loaded from backend");
           return config;
-        } else {
-          console.warn("⚠️ Config: Backend returned invalid config (missing alchemyApiKey or workerUrl)", config);
         }
-      } else {
-        const errorText = await response.text().catch(() => '');
-        console.warn(`⚠️ Config: Backend returned status ${response.status}: ${response.statusText}`, errorText.substring(0, 100));
       }
     } catch (err) {
-      // Check if it's a timeout vs other error
-      if (err.name === 'AbortError') {
-        console.error("❌ Config: Backend request timed out after 5 seconds. Is backend running?");
-        console.error("   → Check: curl http://localhost:3000/health");
-      } else if (err.message?.includes('fetch') || err.message?.includes('Failed to fetch')) {
-        console.error("❌ Config: Cannot connect to backend. Is it running on port 3000?");
-        console.error("   → Start backend: cd backend && npm run dev");
-        console.error("   → Error:", err.message);
-      } else {
-        console.warn("⚠️ Config: Backend endpoint not available:", err?.message || err);
-      }
-      // Continue to fallback logic below - DON'T THROW YET
+      console.warn("⚠️ Backend config not available:", err.message);
     }
   }
 
-  // 2) Frontend config - DISABLED BY DEFAULT for security
-  // Only enable for development if backend is not available
+  // 2) Frontend fallback (DEV ONLY)
   if (FRONTEND_CONFIG.enabled) {
-    // ⚠️ SECURITY WARNING: Frontend config should only be used in development
-    if (HOSTNAME !== "localhost" && HOSTNAME !== "127.0.0.1") {
-      console.error("❌ SECURITY: Frontend config is not allowed in production!");
-      throw new Error(
-        "Frontend config is disabled for security. " +
-        "Please use backend config endpoint or environment variables."
-      );
+    if (!ALLOW_FRONTEND_CONFIG) {
+      throw new Error("Frontend config blocked for this hostname.");
     }
-
-    // Check if API key is set (should not be hardcoded)
     if (!FRONTEND_CONFIG.alchemyApiKey) {
-      console.error("❌ Config: Frontend API key not set. Use backend config instead.");
-      throw new Error(
-        "API key must be provided via backend config endpoint. " +
-        "See FLEX_GRID_SETUP.md for instructions."
-      );
+      throw new Error("DEV MODE: alchemyApiKey missing.");
     }
 
-    const chosenWorker =
-      HOSTNAME === "localhost" ? FRONTEND_CONFIG.localWorkerUrl : FRONTEND_CONFIG.workerUrl;
+    const worker =
+      (HOSTNAME === "localhost" || HOSTNAME === "127.0.0.1")
+        ? FRONTEND_CONFIG.localWorkerUrl
+        : FRONTEND_CONFIG.workerUrl;
 
-    console.warn("⚠️ SECURITY: Using frontend config (development only)", {
-      hostname: HOSTNAME,
-      workerUrl: chosenWorker,
-    });
+    console.warn("⚠️ DEV MODE: Using frontend config", { hostname: HOSTNAME, worker });
 
     return {
       alchemyApiKey: FRONTEND_CONFIG.alchemyApiKey,
-      workerUrl: chosenWorker,
+      workerUrl: worker,
     };
   }
 
-  // 3) Nothing available - provide helpful error
-  const errorMsg = `Configuration not available for hostname: ${HOSTNAME}\n\n` +
-    `Backend config endpoint failed or is not accessible.\n\n` +
-    `For localhost development:\n` +
-    `  1. Make sure backend is running: cd backend && npm run dev\n` +
-    `  2. Verify backend is accessible: curl http://localhost:3000/health\n` +
-    `  3. Check that ALCHEMY_API_KEY is set in backend/.env file\n\n` +
-    `If you're using GitHub Pages, hostname should end with github.io.\n` +
-    `If you're using a custom domain, add it to ALLOW_FRONTEND_CONFIG in config.js.`;
-  
-  console.error("❌ Config error:", errorMsg);
+  // 3) Hard fail
+  const errorMsg =
+`Configuration not available for hostname: ${HOSTNAME}
+
+Backend config failed.
+
+For localhost:
+  cd backend && npm run dev
+
+GitHub Pages:
+  hostname should be littleollie.github.io or end with .github.io
+
+Allowed hosts:
+  localhost, 127.0.0.1, littleollie.github.io, *.github.io`;
+
+  console.error(errorMsg);
   throw new Error(errorMsg);
 }
 
