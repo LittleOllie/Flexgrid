@@ -92,6 +92,7 @@ const state = {
   chain: "eth",
   host: "eth-mainnet.g.alchemy.com",
 };
+state.imageLoadState = { total: 0, loaded: 0, failed: 0, retrying: 0 };
 
 // ---- Export watermark (single source of truth) ----
 const EXPORT_WATERMARK_TEXT = "⚡ Powered by Little Ollie";
@@ -1449,12 +1450,8 @@ try {
 }
 
     // export
-    const url = canvas.toDataURL("image/png",1);
+await saveCanvasPNG(canvas, "lo-grid.png");
 
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "lo-grid.png";
-    a.click();
 
     setStatus("Saved ✔");
     updateGuideGlow();
