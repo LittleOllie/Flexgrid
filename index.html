@@ -704,6 +704,18 @@ body.dark .btn, body.dark .btnSmall{
     0 0 18px rgba(0,255,213,.28),
     inset 0 2px 0 rgba(255,255,255,.18);
 }
+/* Dark mode: change the guideGlow from green -> neon cyan */
+body.dark .guideGlow{
+  box-shadow:
+    0 0 0 2px rgba(0,255,213,.95),
+    0 0 26px rgba(0,255,213,.75),
+    0 0 40px rgba(0,255,213,.45);
+}
+/* Dark mode: change the little guide dot colour too */
+body.dark .guideGlow::after{
+  background: rgba(0,255,213,1);
+  box-shadow: 0 0 12px rgba(0,255,213,.9);
+}
 
   </style>
 </head>
