@@ -648,6 +648,12 @@ body::before{
     animation: none !important;
   }
 }
+/* Bigger collection names (NO layout growth) */
+.collectionName{
+  font-size: 15px !important;   /* was ~13px */
+  line-height: 1.05;            /* tighter so row height stays same */
+  font-weight: 900;
+}
 
   </style>
 </head>
@@ -892,6 +898,6 @@ body::before{
     })();
   </script>
 
-<script type="module" src="./app.js?v=20260109-40"></script>
+<script type="module" src="./app.js?v=20260109-41"></script>
 </body>
 </html>
