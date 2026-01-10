@@ -1061,9 +1061,22 @@ async function loadWallets() {
       const nfts = await fetchAlchemyNFTs({ wallet: w, host });
       allNfts.push(...(nfts || []));
     }
+const deduped = dedupeNFTs(allNfts);
 
-    const deduped = dedupeNFTs(allNfts);
-    const grouped = groupByCollection(deduped);
+// TEMP DEBUG: inspect questing/staking metadata
+const sample = deduped.find(n =>
+  /quest|stake/i.test(n?.contract?.name || n?.collection?.name || "")
+);
+
+if (sample) {
+  console.log("🔎 QUEST SAMPLE", sample);
+  console.log("🔎 rawMetadata", sample?.rawMetadata);
+  console.log("🔎 attributes", sample?.rawMetadata?.attributes);
+  console.log("🔎 tokenUri", sample?.tokenUri);
+}
+
+const grouped = groupByCollection(deduped);
+
 
     state.collections = grouped;
     state.selectedKeys = new Set();
