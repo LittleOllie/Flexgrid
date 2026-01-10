@@ -1288,24 +1288,6 @@ function isImgUsable(img){
   return img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0;
 }
 
-function drawPlaceholder(ctx, x, y, w, h, label="MISSING"){
-  // background
-  ctx.fillStyle = "rgba(255,255,255,0.06)";
-  ctx.fillRect(x, y, w, h);
-
-  // border
-  ctx.strokeStyle = "rgba(255,255,255,0.25)";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x+1, y+1, w-2, h-2);
-
-  // text
-  ctx.fillStyle = "rgba(255,255,255,0.75)";
-  ctx.font = `700 ${Math.max(10, Math.round(w*0.12))}px system-ui, -apple-system`;
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, x + Math.round(w*0.08), y + Math.round(h*0.5));
-}
-
-
 async function exportPNG() {
   try {
     setStatus("Exporting…");
