@@ -547,6 +547,107 @@ h2{
 html, body, button, input, select, textarea {
   font-family: "Baloo 2", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
 }
+/* ==========================
+   LO ARCADE MOTION (CSS ONLY)
+   Safe: no functionality changes
+   ========================== */
+
+/* 1) Background shimmer */
+body::before{
+  content:"";
+  position: fixed;
+  inset: -40%;
+  pointer-events:none;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255,255,255,.14), transparent 40%),
+    radial-gradient(circle at 70% 60%, rgba(255,255,255,.10), transparent 45%),
+    linear-gradient(120deg, transparent 0%, rgba(255,255,255,.07) 25%, transparent 50%);
+  filter: blur(20px);
+  opacity: .35;
+  transform: translate3d(0,0,0);
+  animation: loShimmer 10s ease-in-out infinite;
+}
+
+@keyframes loShimmer{
+  0%   { transform: translate(-6%, -4%) rotate(0deg); }
+  50%  { transform: translate(6%, 4%) rotate(8deg); }
+  100% { transform: translate(-6%, -4%) rotate(0deg); }
+}
+
+/* 2) Panels: soft breathing glow */
+.panel{
+  position: relative;
+}
+.panel::after{
+  content:"";
+  position:absolute;
+  inset:-1px;
+  border-radius: 18px;
+  pointer-events:none;
+  background: radial-gradient(circle at top, rgba(109,224,255,.25), transparent 55%);
+  opacity:.35;
+  animation: panelGlow 4.5s ease-in-out infinite;
+}
+@keyframes panelGlow{
+  0%,100%{ opacity:.22; }
+  50%    { opacity:.42; }
+}
+
+/* 3) Buttons: gentle sparkle pulse (idle) */
+.btn, .btnSmall{
+  position: relative;
+  overflow: hidden;
+}
+.btn::after, .btnSmall::after{
+  content:"";
+  position:absolute;
+  top:-40%;
+  left:-60%;
+  width: 50%;
+  height: 180%;
+  background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,.35) 50%, transparent 100%);
+  transform: rotate(18deg);
+  opacity: 0;
+  animation: btnSweep 3.8s ease-in-out infinite;
+  pointer-events:none;
+}
+@keyframes btnSweep{
+  0%,55% { left:-60%; opacity:0; }
+  60%    { opacity:.25; }
+  85%    { left:130%; opacity:.10; }
+  100%   { left:130%; opacity:0; }
+}
+
+/* 4) Stage header “scan” sweep */
+.stageHeader{
+  position: relative;
+  overflow: hidden;
+}
+.stageHeader::after{
+  content:"";
+  position:absolute;
+  inset:-40% -60%;
+  background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,.18) 40%, transparent 70%);
+  transform: rotate(12deg);
+  animation: headerSweep 5.5s ease-in-out infinite;
+  pointer-events:none;
+  opacity:.22;
+}
+@keyframes headerSweep{
+  0%,60% { transform: translateX(-40%) rotate(12deg); opacity:0; }
+  70%    { opacity:.22; }
+  100%   { transform: translateX(40%) rotate(12deg); opacity:0; }
+}
+
+/* Respect reduced motion (important for accessibility) */
+@media (prefers-reduced-motion: reduce){
+  body::before,
+  .panel::after,
+  .btn::after, .btnSmall::after,
+  .stageHeader::after{
+    animation: none !important;
+  }
+}
 
   </style>
 </head>
@@ -791,6 +892,6 @@ html, body, button, input, select, textarea {
     })();
   </script>
 
-<script type="module" src="./app.js?v=20260109-39"></script>
+<script type="module" src="./app.js?v=20260109-40"></script>
 </body>
 </html>
