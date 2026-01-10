@@ -1280,129 +1280,108 @@ async function saveCanvasPNG(canvas, filename = "little-ollie-grid.png") {
   setTimeout(() => URL.revokeObjectURL(url), 8000);
 }
 
-async function exportPNG() {
+  async function exportPNG() {
   try {
     setStatus("Exporting…");
 
-    const tiles = [...document.querySelectorAll("#grid .tile")];
+    const tiles = Array.from(document.querySelectorAll("#grid .tile"));
     if (!tiles.length) return setStatus("Nothing to export");
 
-    const grid = $("grid");
-    const cols = getComputedGridCols(grid);
+    const gridEl = $("grid");
+    const cols = getComputedGridCols(gridEl);
     const rows = Math.ceil(tiles.length / cols);
 
     // TRUE tile size (iOS fix)
     const rect = tiles[0].getBoundingClientRect();
     let tileSize = Math.round(rect.width);
-    if (tileSize < 40) tileSize = 120;
+    if (!tileSize || tileSize < 40) tileSize = 120;
 
-    // Retina scale
+    // Use a safe export scale (fast + crisp)
     const dpr = window.devicePixelRatio || 1;
-    const scale = Math.min(3, dpr * 2); // crisp but safe
+    const scale = Math.min(3, Math.max(1.5, dpr * 2));
 
     const pad = 4;
 
-    const outW = Math.round((cols * tileSize + pad * 2) * scale);
-    const outH = Math.round((rows * tileSize + pad * 2) * scale);
+    const cssW = cols * tileSize + pad * 2;
+    const cssH = rows * tileSize + pad * 2;
+
+    const outW = Math.round(cssW * scale);
+    const outH = Math.round(cssH * scale);
 
     const canvas = document.createElement("canvas");
     canvas.width = outW;
     canvas.height = outH;
 
     const ctx = canvas.getContext("2d");
-    ctx.scale(scale, scale);
+
+    // Reset transform cleanly + scale to CSS pixels
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
 
-    ctx.clearRect(0,0,outW,outH);
+    // Clear in CSS pixel space
+    ctx.clearRect(0, 0, cssW, cssH);
 
-    // draw tiles
-    let i = 0;
-    for(let r=0;r<rows;r++){
-      for(let c=0;c<cols;c++){
-        const tile = tiles[i++];
-        if(!tile) continue;
+    // Draw each slot (including fillers/missing)
+    // NOTE: We do NOT rely on DOM overlay watermark; we draw it ourselves.
+    let idx = 0;
 
-        const img = tile.querySelector("img");
-        if(!img) continue;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const tile = tiles[idx++];
+        if (!tile) continue;
 
         const x = pad + c * tileSize;
         const y = pad + r * tileSize;
 
-        ctx.drawImage(img, x, y, tileSize, tileSize);
+        const kind = tile.dataset.kind || "";
+        const srcFromData = tile.dataset.src || "";
+        const imgEl = tile.querySelector("img");
+        const fallbackSrc = imgEl?.currentSrc || imgEl?.src || "";
+
+        // For export we ALWAYS try proxy-first to avoid canvas tainting
+        // Use dataset.src (best) then fallback to image src.
+        const bestSrc = srcFromData || fallbackSrc;
+
+        // Filler or no-src
+        if (!bestSrc || kind === "empty") {
+          drawPlaceholder(ctx, x, y, tileSize, tileSize, "LO ⚡");
+          continue;
+        }
+
+        // Missing tile
+        if (kind === "missing") {
+          drawPlaceholder(ctx, x, y, tileSize, tileSize, "Missing");
+          continue;
+        }
+
+        // Load + draw image (proxy first)
+        try {
+          const prox = exportProxyUrl(bestSrc);
+          const img = await loadImageWithRetry(prox, 2, 25000);
+          ctx.drawImage(img, x, y, tileSize, tileSize);
+        } catch (e) {
+          // If export fetch fails, draw placeholder instead of breaking export
+          drawPlaceholder(ctx, x, y, tileSize, tileSize, "Missing");
+        }
       }
     }
 
-// ---- WATERMARK (robust) ----
-let wmText = "";
+    // ---- WATERMARK (always drawn into exported image) ----
+    // This draws the badge inside the first tile area.
+    // Uses your existing drawWatermarkAcrossTile() which includes ⚡ + text.
+    drawWatermarkAcrossTile(ctx, pad, pad, tileSize, tileSize);
 
-// 1) Preferred: element with id="watermark"
-const wmEl = document.getElementById("watermark");
-
-// 2) Fallbacks: common variants
-const wmAlt =
-  document.querySelector("[data-watermark]") ||
-  document.getElementById("wm") ||
-  document.getElementById("watermarkText") ||
-  document.querySelector(".watermark");
-
-if (wmEl) wmText = (wmEl.textContent || "").trim();
-if (!wmText && wmAlt) wmText = (wmAlt.textContent || "").trim();
-
-// 3) Final fallback: use selected collection name if you store it somewhere
-// (If you have a variable like state.selectedCollectionName, set it here)
-// if (!wmText && state?.selectedCollectionName) wmText = state.selectedCollectionName;
-
-if (!wmText) {
-  console.warn("⚠️ No watermark text found (export). Check element id/class.");
-} else {
-  const firstTileW = tileSize - 8;
-
-  // font size scales with tile size but stays sane
-  const fontPx = Math.max(12, Math.round(firstTileW * 0.18));
-  ctx.font = `800 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-  ctx.textBaseline = "top";
-
-  const boxPad = 6;
-  const textW = ctx.measureText(wmText).width;
-
-  // box width clamped to first tile width
-  const boxW = Math.min(textW + boxPad * 2, firstTileW);
-  const boxH = fontPx + boxPad * 2;
-
-  // top-left inside first tile
-  const bx = pad + 4;
-  const by = pad + 4;
-
-  // background box
-  ctx.fillStyle = "rgba(0,0,0,0.62)";
-  ctx.fillRect(bx, by, boxW, boxH);
-
-  // text (truncate if needed)
-  let drawText = wmText;
-  while (ctx.measureText(drawText).width > (boxW - boxPad * 2) && drawText.length > 3) {
-    drawText = drawText.slice(0, -2) + "…";
-  }
-
-  ctx.fillStyle = "#ffd22e";
-  ctx.fillText(drawText, bx + boxPad, by + boxPad);
-}
-
-    // export
-    const url = canvas.toDataURL("image/png",1);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "lo-grid.png";
-    a.click();
+    // Save using your robust iOS-safe saver
+    await saveCanvasPNG(canvas, "little-ollie-grid.png");
 
     setStatus("Saved ✔");
-
-  } catch(err){
+  } catch (err) {
     console.error(err);
+    addError(err, "Export");
     setStatus("Export failed");
   }
 }
-
 
 function getComputedGridCols(gridEl) {
   if (!gridEl) return 1;
