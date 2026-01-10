@@ -1282,29 +1282,25 @@ async function saveCanvasPNG(canvas, filename = "little-ollie-grid.png") {
 
 async function exportPNG() {
   try {
-    if (!configLoaded || !IMG_PROXY) {
-      setStatus("❌ Export needs IMG proxy configured (workerUrl in config.js).");
-      return;
-    }
+    setStatus("Exporting…");
 
-    const tiles = Array.from(document.querySelectorAll("#grid .tile"));
-    if (!tiles.length) return setStatus("Nothing to export. Build grid first.");
+    const tiles = [...document.querySelectorAll("#grid .tile")];
+    if (!tiles.length) return setStatus("Nothing to export");
 
-    setStatus("Exporting… may take a moment");
-
-    const gridEl = $("grid");
-    const cols = getComputedGridCols(gridEl);
+    const grid = $("grid");
+    const cols = getComputedGridCols(grid);
     const rows = Math.ceil(tiles.length / cols);
 
-    // tile size from first tile
+    // TRUE tile size (iOS fix)
     const rect = tiles[0].getBoundingClientRect();
     let tileSize = Math.round(rect.width);
-    if (!tileSize || tileSize < 10) tileSize = 140;
+    if (tileSize < 40) tileSize = 120;
 
-    // mobile memory safety
-    const scale = isIOS() ? 1 : 2;
-    const pad = 2;
-    const borderPx = 2;
+    // Retina scale
+    const dpr = window.devicePixelRatio || 1;
+    const scale = Math.min(3, dpr * 2); // crisp but safe
+
+    const pad = 4;
 
     const outW = Math.round((cols * tileSize + pad * 2) * scale);
     const outH = Math.round((rows * tileSize + pad * 2) * scale);
@@ -1312,67 +1308,72 @@ async function exportPNG() {
     const canvas = document.createElement("canvas");
     canvas.width = outW;
     canvas.height = outH;
-    const ctx = canvas.getContext("2d", { alpha: true });
 
-    ctx.clearRect(0, 0, outW, outH);
+    const ctx = canvas.getContext("2d");
+    ctx.scale(scale, scale);
+    ctx.imageSmoothingQuality = "high";
 
-// pre-load images one-by-one to avoid spikes
-for (let i = 0; i < tiles.length; i++) {
-  const tile = tiles[i];
-  const col = i % cols;
-  const row = Math.floor(i / cols);
+    ctx.clearRect(0,0,outW,outH);
 
-  const x = Math.round((pad + col * tileSize) * scale);
-  const y = Math.round((pad + row * tileSize) * scale);
-  const w = Math.round(tileSize * scale);
-  const h = Math.round(tileSize * scale);
+    // draw tiles
+    let i = 0;
+    for(let r=0;r<rows;r++){
+      for(let c=0;c<cols;c++){
+        const tile = tiles[i++];
+        if(!tile) continue;
 
-  const kind = tile.dataset.kind || "";
-  const src = tile.dataset.src || "";
+        const img = tile.querySelector("img");
+        if(!img) continue;
 
-  if (kind === "loaded" && src) {
-    const prox = exportProxyUrl(src);
+        const x = pad + c * tileSize;
+        const y = pad + r * tileSize;
 
-    try {
-      const img = await loadImageWithRetry(prox, 2, 25000);
-
-      const iw = img.naturalWidth || img.width;
-      const ih = img.naturalHeight || img.height;
-
-      const scaleFit = Math.max(w / iw, h / ih);
-      const dw = iw * scaleFit;
-      const dh = ih * scaleFit;
-      const dx = x + (w - dw) / 2;
-      const dy = y + (h - dh) / 2;
-
-      ctx.drawImage(img, dx, dy, dw, dh);
-    } catch (e) {
-      drawPlaceholder(ctx, x, y, w, h, "Missing");
-      addError(e, "Export image load");
+        ctx.drawImage(img, x, y, tileSize, tileSize);
+      }
     }
 
-  } else if (kind === "missing") {
-    drawPlaceholder(ctx, x, y, w, h, "Missing");
+    // ---- WATERMARK ----
+    const wm = $("watermark");
+    if(wm){
+      const txt = wm.textContent.trim();
 
-  } else {
-    // EMPTY TILE → leave blank
-  }
+      const firstTileW = tileSize - 8;
 
-  // WATERMARK only on first tile
-  if (i === 0) {
-    drawWatermarkAcrossTile(ctx, x, y, w, h);
-  }
-}
+      ctx.font = `bold ${Math.max(12, firstTileW*0.18)}px system-ui`;
+      ctx.textBaseline = "top";
 
-// save AFTER loop
-await saveCanvasPNG(canvas, "little-ollie-grid.png");
-setStatus("Export complete ✅");
+      const textW = ctx.measureText(txt).width;
+      const boxPad = 6;
 
-  } catch (e) {
-    console.error("EXPORT FAILED:", e);
-    addError(e, "Export");
-    setStatus("❌ Export failed (see error log / console)");
-    alert("EXPORT FAILED: " + (e?.message || e));
+      const boxW = Math.min(textW + boxPad*2, firstTileW);
+      const boxH = parseInt(ctx.font) + boxPad*2;
+
+      // LOCK to first tile
+      const bx = pad + 4;
+      const by = pad + 4;
+
+      // box
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillRect(bx, by, boxW, boxH);
+
+      // text
+      ctx.fillStyle = "#ffd22e";
+      ctx.fillText(txt, bx + boxPad, by + boxPad);
+    }
+
+    // export
+    const url = canvas.toDataURL("image/png",1);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "lo-grid.png";
+    a.click();
+
+    setStatus("Saved ✔");
+
+  } catch(err){
+    console.error(err);
+    setStatus("Export failed");
   }
 }
 
