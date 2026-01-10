@@ -768,6 +768,37 @@ body.dark .guideGlow::after{
   color: var(--btnText);
   border-color: rgba(255,255,255,.28);
 }
+/* ==========================
+   TILE PLACEHOLDER (OVERRIDE)
+   Put this at the VERY END of the CSS so it wins.
+   ========================== */
+
+/* Show tile.png by default while loading */
+.tile{
+  background-image: url("./tile.png") !important;
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+}
+
+/* Hide the <img> until it successfully loads */
+.tile img{
+  opacity: 0 !important;
+  transition: opacity .15s ease !important;
+}
+
+/* When loaded, remove placeholder + show image */
+.tile.isLoaded{
+  background-image: none !important;
+}
+.tile.isLoaded img{
+  opacity: 1 !important;
+}
+
+/* When missing/failed, keep placeholder */
+.tile.isMissing{
+  background-image: url("./tile.png") !important;
+}
 
   </style>
 </head>

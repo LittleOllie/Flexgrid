@@ -189,7 +189,9 @@ function loadImgWithTimeout(imgEl, src, timeout = 25000) {
         clean();
         reject(new Error("Image failed: " + src));
       };
-      imgEl.src = "";
+
+      // ✅ prevents broken icon / filename flash
+      try { imgEl.removeAttribute("src"); } catch(e) {}
       imgEl.src = src;
     }),
     new Promise((_, reject) =>
@@ -197,6 +199,7 @@ function loadImgWithTimeout(imgEl, src, timeout = 25000) {
     ),
   ]);
 }
+
 
 function loadImgWithLimiter(imgEl, src, timeout = 25000) {
   return gridImgLimit(() => loadImgWithTimeout(imgEl, src, timeout));
@@ -799,10 +802,14 @@ function markMissing(tile, img, rawUrl) {
   try {
     if (img && img.parentNode) img.remove();
   } catch (e) {}
+
   tile.dataset.kind = "missing";
 
+  // ✅ keep placeholder tile.png, no "Missing" text
+  tile.classList.remove("isLoaded");
+  tile.classList.add("isMissing");
+
   const src = tile.dataset.src || "";
-  if (!tile.querySelector(".fillerText")) tile.appendChild(makeMissingInner());
 
   if (typeof window !== "undefined" && window.location.hostname === "localhost") {
     console.warn("❌ Tile missing", {
@@ -814,6 +821,7 @@ function markMissing(tile, img, rawUrl) {
     });
   }
 }
+
 
 async function fetchBestAlchemyImage({ contract, tokenId, host }) {
   const meta = await fetchAlchemyNFTMetadata({ contract, tokenId, host });
@@ -859,6 +867,9 @@ async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
           state.imageLoadState.loaded++;
           updateImageProgress();
           tile.dataset.kind = "loaded";
+tile.classList.remove("isMissing");
+tile.classList.add("isLoaded");
+
           tile.dataset.src = metaUrl;
           return true;
         } catch (_) {}
@@ -873,6 +884,9 @@ async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
     state.imageLoadState.loaded++;
     updateImageProgress();
     tile.dataset.kind = "loaded";
+tile.classList.remove("isMissing");
+tile.classList.add("isLoaded");
+
     return true;
   } catch (e1) {
     // Strategy 3: Direct (DISPLAY-ONLY) fallback (non-IPFS only)
@@ -883,6 +897,9 @@ async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
         state.imageLoadState.loaded++;
         updateImageProgress();
         tile.dataset.kind = "loaded";
+tile.classList.remove("isMissing");
+tile.classList.add("isLoaded");
+
         return true;
       } catch (_) {
         // continue
@@ -903,6 +920,9 @@ async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
             state.imageLoadState.loaded++;
             updateImageProgress();
             tile.dataset.kind = "loaded";
+tile.classList.remove("isMissing");
+tile.classList.add("isLoaded");
+
             tile.dataset.src = gatewayUrl;
             return true;
           } catch (_) {
@@ -934,6 +954,9 @@ async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
         state.imageLoadState.loaded++;
         updateImageProgress();
         tile.dataset.kind = "loaded";
+tile.classList.remove("isMissing");
+tile.classList.add("isLoaded");
+
         return true;
       } catch (_) {}
     }
@@ -953,6 +976,7 @@ async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
 function makeNFTTile(it) {
   const tile = document.createElement("div");
   tile.className = "tile";
+tile.classList.remove("isLoaded","isMissing");
   tile.draggable = true;
 
   const contract = (it?.contract || it?.contractAddress || it?.sourceKey || "").toLowerCase();
@@ -966,7 +990,7 @@ function makeNFTTile(it) {
 
   const img = document.createElement("img");
   img.loading = "lazy";
-  img.alt = safeText(it?.name || "NFT");
+img.alt = ""; // ✅ prevents filename/name text showing
   img.referrerPolicy = "no-referrer";
   img.crossOrigin = "anonymous";
 
