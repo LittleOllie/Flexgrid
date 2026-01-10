@@ -10,6 +10,81 @@
 
 const $ = (id) => document.getElementById(id);
 
+// ---------- Guided glow (onboarding highlight) ----------
+function setGuideGlow(ids = []) {
+  const all = [
+    "walletInput",
+    "addWalletBtn",
+    "loadBtn",
+    "controlsPanel",
+    "collectionsList",
+    "buildBtn",
+    "exportBtn",
+  ];
+
+  // clear glow everywhere
+  all.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove("guideGlow");
+  });
+
+  // apply glow to current targets
+  ids.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add("guideGlow");
+  });
+}
+
+// Call this any time state changes
+function updateGuideGlow() {
+  const hasWallets = state.wallets.length > 0;
+  const controlsVisible = !!document.getElementById("controlsPanel") && $("controlsPanel")?.style.display !== "none";
+  const hasSelectedCollections = state.selectedKeys && state.selectedKeys.size > 0;
+
+  const gridHasTiles = document.querySelectorAll("#grid .tile").length > 0;
+  const exportEnabled = !!$("exportBtn") && $("exportBtn").disabled === false;
+
+  // 1) No wallets yet -> highlight input + add
+  if (!hasWallets) {
+    setGuideGlow(["walletInput", "addWalletBtn"]);
+    return;
+  }
+
+  // 2) Wallet(s) added but not loaded yet -> highlight load button
+  if (hasWallets && !controlsVisible) {
+    setGuideGlow(["loadBtn"]);
+    return;
+  }
+
+  // 3) Wallets loaded -> highlight collections area (panel + list)
+  if (controlsVisible && !hasSelectedCollections) {
+    setGuideGlow(["controlsPanel", "collectionsList"]);
+    return;
+  }
+
+  // 4) Collection selected -> highlight build
+  if (hasSelectedCollections && !gridHasTiles) {
+    setGuideGlow(["buildBtn"]);
+    return;
+  }
+
+  // 5) Grid built -> highlight export (until exported)
+  if (gridHasTiles && !exportEnabled) {
+    // (Normally export is enabled right after build, but keep this safe)
+    setGuideGlow(["exportBtn"]);
+    return;
+  }
+
+  if (gridHasTiles) {
+    setGuideGlow(["exportBtn"]);
+    return;
+  }
+
+  // fallback
+  setGuideGlow([]);
+}
+
+
 const state = {
   collections: [],
   selectedKeys: new Set(),
@@ -401,15 +476,19 @@ function addWallet() {
 
   renderWalletList();
   enableButtons();
+  updateGuideGlow();
   setStatus(`Wallet added ✅ (${state.wallets.length} total)`);
 }
+
 
 function removeWallet(w) {
   state.wallets = state.wallets.filter((x) => x !== w);
   renderWalletList();
   enableButtons();
+  updateGuideGlow();
   setStatus(`Wallet removed ✅ (${state.wallets.length} remaining)`);
 }
+
 
 function renderWalletList() {
   const wrap = $("walletList");
@@ -482,7 +561,10 @@ function renderCollectionsList() {
       const exportBtn = $("exportBtn");
       if (buildBtn) buildBtn.disabled = state.selectedKeys.size === 0;
       if (exportBtn) exportBtn.disabled = true;
+
+      updateGuideGlow();
     });
+
 
     const label = document.createElement("div");
     label.style.minWidth = "0";
@@ -513,6 +595,8 @@ function setAllCollections(checked) {
   const exportBtn = $("exportBtn");
   if (buildBtn) buildBtn.disabled = state.selectedKeys.size === 0;
   if (exportBtn) exportBtn.disabled = true;
+
+  updateGuideGlow();
 }
 
 function getSelectedCollections() {
@@ -670,8 +754,10 @@ if (state.imageLoadState.total > 0) updateImageProgress();
 else setStatus("Grid built ✅ (drag tiles to reorder on desktop)");
 
 enableDragDrop();
+updateGuideGlow();
 
 }
+
 
 // ---------- Image loading + fallbacks ----------
 const MISSING_GRACE_MS = 30000;
@@ -982,6 +1068,8 @@ async function loadWallets() {
 
     renderCollectionsList();
     showControlsPanel(true);
+    updateGuideGlow();
+
 
     const buildBtn = $("buildBtn");
     const exportBtn = $("exportBtn");
@@ -1367,6 +1455,7 @@ try {
     a.click();
 
     setStatus("Saved ✔");
+    updateGuideGlow();
 
   } catch(err){
     console.error(err);
@@ -1480,6 +1569,8 @@ async function initializeConfig() {
     enableButtons();
     setStatus("Ready ✅ ➕ Add wallet(s) → 🔍 Load wallet(s) → select collections → 🧩 Build → 📸 Export");
     showConnectionStatus(false);
+updateGuideGlow();
+
   } catch (error) {
     const statusEl = $("status");
     if (statusEl) {
