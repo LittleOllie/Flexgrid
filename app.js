@@ -1256,8 +1256,6 @@ const targets = nfts.filter(n =>
   (n?.tokenUri || n?.tokenUri?.gateway || n?.raw?.tokenUri)
 );
 
-  );
-
   if (!targets.length) return;
 
   // Safety caps so we don't smash the gateway if someone has thousands
