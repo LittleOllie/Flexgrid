@@ -1220,19 +1220,13 @@ async function loadImageWithRetry(src, tries = 2, timeoutMs = 25000) {
   throw lastErr || new Error("Image failed: " + src);
 }
 
-function drawPlaceholder(ctx, x, y, w, h, label = "") {
-  ctx.save();
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = "rgba(0,0,0,0.25)";
-  ctx.fillRect(x, y, w, h);
-
-  ctx.strokeStyle = "rgba(255,255,255,0.35)";
-  ctx.lineWidth = Math.max(2, Math.floor(w * 0.02));
-  ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
-
-  // ✅ No text drawn anymore
-  ctx.restore();
+function drawPlaceholder(ctx, x, y, w, h) {
+  // Intentionally blank:
+  // No fill
+  // No stroke
+  // No text
 }
+
 
 
 function drawLightningIcon(ctx, x, y, size) {

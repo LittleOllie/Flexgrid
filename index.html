@@ -733,6 +733,41 @@ body.dark .guideGlow::after{
     opacity: 0.8;
   }
 }
+/* ==========================
+   Tabs bar
+   ========================== */
+.tabsBar{
+  display:flex;
+  gap:10px;
+  flex-wrap: wrap;
+  margin: 10px 0 14px;
+}
+
+.tabBtn{
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-weight: 950;
+  cursor: pointer;
+  background: rgba(0,0,0,.18);
+  color: rgba(255,255,255,.92);
+  box-shadow: 0 10px 18px rgba(0,0,0,.15);
+  transition: transform .08s ease, filter .15s ease;
+}
+
+.tabBtn:hover{
+  filter: brightness(1.05);
+}
+
+.tabBtn:active{
+  transform: translateY(1px);
+}
+
+.tabBtn.active{
+  background: linear-gradient(180deg, var(--btnYellow), var(--btnYellow2));
+  color: var(--btnText);
+  border-color: rgba(255,255,255,.28);
+}
 
   </style>
 </head>
@@ -743,8 +778,15 @@ body.dark .guideGlow::after{
     <div class="heroHeader">
       <img src="./header.png" alt="Little Ollie Header" />
     </div>
+<!-- ✅ Tabs / Section Switcher -->
+<div class="tabsBar" id="tabsBar">
+  <button type="button" class="tabBtn active" data-target="setupPanel">🧰 Setup</button>
+  <button type="button" class="tabBtn" data-target="controlsPanel">📦 Collections</button>
+  <button type="button" class="tabBtn" data-target="gridPanel">🧩 Grid</button>
+</div>
 
-    <section class="panel">
+
+<section class="panel" id="setupPanel">
       <div class="row two">
 
         <!-- LEFT: Wallets -->
@@ -875,7 +917,7 @@ body.dark .guideGlow::after{
       </div>
     </section>
 
-    <section class="stageWrap">
+<section class="stageWrap" id="gridPanel">
       <div id="stage" class="stage">
         <div class="stageHeader">
 <div id="stageTitle" class="stageTitle">
@@ -974,6 +1016,46 @@ body.dark .guideGlow::after{
   })();
 </script>
  
+<script>
+  (function(){
+    const tabsBar = document.getElementById("tabsBar");
+    if(!tabsBar) return;
+
+    const tabBtns = Array.from(tabsBar.querySelectorAll(".tabBtn"));
+
+    function showPanel(panelId){
+      const panels = ["setupPanel", "controlsPanel", "gridPanel"];
+      panels.forEach(id => {
+        const el = document.getElementById(id);
+        if(!el) return;
+
+        // keep your collections panel "display:none" behaviour when hidden
+        el.style.display = (id === panelId) ? "" : "none";
+      });
+
+      tabBtns.forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.target === panelId);
+      });
+
+      try { localStorage.setItem("lo_flexgrid_tab", panelId); } catch(e){}
+    }
+
+    tabBtns.forEach(btn => {
+      btn.addEventListener("click", () => showPanel(btn.dataset.target));
+    });
+
+    // default tab
+    let start = "setupPanel";
+    try {
+      start = localStorage.getItem("lo_flexgrid_tab") || "setupPanel";
+    } catch(e){}
+
+    // if saved tab doesn't exist, fallback
+    if(!document.getElementById(start)) start = "setupPanel";
+
+    showPanel(start);
+  })();
+</script>
 
 <script type="module" src="./app.js?v=20260109-31"></script>
 </body>
