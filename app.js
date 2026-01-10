@@ -18,6 +18,10 @@ const state = {
   host: "eth-mainnet.g.alchemy.com",
 };
 
+// ---- Export watermark (single source of truth) ----
+const EXPORT_WATERMARK_TEXT = "⚡ Powered by Little Ollie";
+
+
 // Configuration (loaded securely - see loadConfig() below)
 let ALCHEMY_KEY = null;
 let IMG_PROXY = null;
@@ -690,10 +694,9 @@ function makeMissingInner() {
 }
 
 function makeFillerInner() {
-  // truly blank filler (no LO text)
   const d = document.createElement("div");
   d.className = "fillerText";
-  d.textContent = ""; // important
+  d.textContent = "LO ⚡";
   return d;
 }
 
@@ -1120,27 +1123,22 @@ async function loadImageWithRetry(src, tries = 2, timeoutMs = 25000) {
   throw lastErr || new Error("Image failed: " + src);
 }
 
-function drawPlaceholder(ctx, x, y, w, h, label = "") {
+function drawPlaceholder(ctx, x, y, w, h, label = "Missing") {
   ctx.save();
   ctx.globalAlpha = 1;
-
-  // subtle background so you still see the tile boundary
-  ctx.fillStyle = "rgba(0,0,0,0.18)";
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
   ctx.fillRect(x, y, w, h);
 
-  ctx.strokeStyle = "rgba(255,255,255,0.18)";
-  ctx.lineWidth = Math.max(1, Math.floor(w * 0.01));
-  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.lineWidth = Math.max(2, Math.floor(w * 0.02));
+  ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
 
-  if (label) {
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    const fontPx = Math.max(14, Math.floor(w * 0.10));
-    ctx.font = `800 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(label, x + w / 2, y + h / 2);
-  }
-
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  const fontPx = Math.max(14, Math.floor(w * 0.10));
+  ctx.font = `800 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, x + w / 2, y + h / 2);
   ctx.restore();
 }
 
@@ -1165,50 +1163,52 @@ function drawWatermarkAcrossTile(ctx, x, y, w, h) {
 
   ctx.save();
 
-  // Inside-tile padding
-  const outerPad = Math.max(2, Math.round(w * 0.02));
-  const bx = x + outerPad;
-  const by = y + outerPad;
+  // position near top-left of the first tile
+  const padX = Math.max(3, Math.round(w * 0.02));
+  const padY = Math.max(3, Math.round(h * 0.02));
+  const bx = x + padX;
+  const by = y + padY;
 
-  // HARD clamp: badge must fit inside the tile
-  const maxBoxW = Math.max(40, Math.floor(w - outerPad * 2));
+  // font sizing
+  let fontPx = Math.max(11, Math.floor(w * 0.085));
+  const minFontPx = 9;
 
-  const fontStack = "system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  const fontStack =
+    "system-ui, -apple-system, Segoe UI, Roboto, Arial, Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji";
+
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
 
-  // Start size then shrink-to-fit
-  let fontPx = Math.max(9, Math.min(14, Math.floor(w * 0.08)));
-  const minFontPx = 8;
+  // padding inside badge
+  const padInsideX = () => Math.round(fontPx * 0.75);
+  const padInsideY = () => Math.round(fontPx * 0.55);
 
-  const boltSize = () => Math.round(fontPx * 1.0);
-  const gap = () => Math.round(fontPx * 0.35);
-  const padX = () => Math.round(fontPx * 0.75);
-  const padY = () => Math.round(fontPx * 0.55);
+  // emoji size + spacing
+  const boltSize = Math.round(fontPx * 1.05);
+  const boltGap = Math.round(fontPx * 0.35);
 
-  let fittedText = text;
+  const maxBoxW = Math.round(w * 0.92);
 
-  while (fontPx >= minFontPx) {
+  // shrink-to-fit
+  while (fontPx > minFontPx) {
     ctx.font = `900 ${fontPx}px ${fontStack}`;
-
-    const availableTextW = maxBoxW - (padX() * 2) - boltSize() - gap();
-    fittedText = ellipsizeToWidth(ctx, text, Math.max(10, availableTextW));
-
-    const textW = ctx.measureText(fittedText).width;
-    const boxW = Math.round(padX() * 2 + boltSize() + gap() + textW);
-
+    const textW = ctx.measureText(text).width;
+    const boxW = Math.round(textW + padInsideX() * 2 + boltSize + boltGap);
     if (boxW <= maxBoxW) break;
     fontPx--;
   }
 
   ctx.font = `900 ${fontPx}px ${fontStack}`;
-  const textW = ctx.measureText(fittedText).width;
+  const textW = ctx.measureText(text).width;
 
-  const boxW = Math.min(maxBoxW, Math.round(padX() * 2 + boltSize() + gap() + textW));
-  const boxH = Math.round(Math.max(fontPx, boltSize()) + padY() * 2);
+  const boxPadX = padInsideX();
+  const boxPadY = padInsideY();
 
-  // Rounded badge
-  const r = Math.max(6, Math.round(fontPx * 0.7));
+  const boxW = Math.min(maxBoxW, Math.round(textW + boxPadX * 2 + boltSize + boltGap));
+  const boxH = Math.round(Math.max(fontPx, boltSize) + boxPadY * 2);
+
+  // rounded rect badge
+  const r = Math.max(7, Math.round(fontPx * 0.7));
   ctx.fillStyle = "rgba(0,0,0,0.35)";
   ctx.strokeStyle = "rgba(255,255,255,0.22)";
   ctx.lineWidth = Math.max(1, Math.round(w * 0.006));
@@ -1227,15 +1227,15 @@ function drawWatermarkAcrossTile(ctx, x, y, w, h) {
   ctx.fill();
   ctx.stroke();
 
-  // Lightning (vector shape, consistent everywhere)
-  ctx.fillStyle = "#ffd22e";
-  drawLightningIcon(ctx, bx + padX(), by + padY() + 1, boltSize());
+  // ⚡ emoji (yellow)
+  ctx.font = `900 ${boltSize}px ${fontStack}`;
+  ctx.fillText("⚡", bx + boxPadX, by + boxPadY);
 
-  // Text
-  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  // text
   ctx.font = `900 ${fontPx}px ${fontStack}`;
-  const textX = bx + padX() + boltSize() + gap();
-  ctx.fillText(fittedText, textX, by + padY());
+  const textX = bx + boxPadX + boltSize + boltGap;
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.fillText(text, textX, by + boxPadY);
 
   ctx.restore();
 }
@@ -1284,108 +1284,111 @@ async function saveCanvasPNG(canvas, filename = "little-ollie-grid.png") {
   setTimeout(() => URL.revokeObjectURL(url), 8000);
 }
 
-  async function exportPNG() {
+async function exportPNG() {
   try {
     setStatus("Exporting…");
 
-    const tiles = Array.from(document.querySelectorAll("#grid .tile"));
+    const tiles = [...document.querySelectorAll("#grid .tile")];
     if (!tiles.length) return setStatus("Nothing to export");
 
-    const gridEl = $("grid");
-    const cols = getComputedGridCols(gridEl);
+    const grid = $("grid");
+    const cols = getComputedGridCols(grid);
     const rows = Math.ceil(tiles.length / cols);
 
     // TRUE tile size (iOS fix)
     const rect = tiles[0].getBoundingClientRect();
     let tileSize = Math.round(rect.width);
-    if (!tileSize || tileSize < 40) tileSize = 120;
+    if (tileSize < 40) tileSize = 120;
 
-    // Use a safe export scale (fast + crisp)
+    // Retina scale
     const dpr = window.devicePixelRatio || 1;
-    const scale = Math.min(3, Math.max(1.5, dpr * 2));
+    const scale = Math.min(3, dpr * 2); // crisp but safe
 
     const pad = 4;
 
-    const cssW = cols * tileSize + pad * 2;
-    const cssH = rows * tileSize + pad * 2;
-
-    const outW = Math.round(cssW * scale);
-    const outH = Math.round(cssH * scale);
+    const outW = Math.round((cols * tileSize + pad * 2) * scale);
+    const outH = Math.round((rows * tileSize + pad * 2) * scale);
 
     const canvas = document.createElement("canvas");
     canvas.width = outW;
     canvas.height = outH;
 
     const ctx = canvas.getContext("2d");
-
-    // Reset transform cleanly + scale to CSS pixels
-    ctx.setTransform(scale, 0, 0, scale, 0, 0);
-    ctx.imageSmoothingEnabled = true;
+    ctx.scale(scale, scale);
     ctx.imageSmoothingQuality = "high";
 
-    // Clear in CSS pixel space
-    ctx.clearRect(0, 0, cssW, cssH);
+    ctx.clearRect(0,0,outW,outH);
 
-    // Draw each slot (including fillers/missing)
-    // NOTE: We do NOT rely on DOM overlay watermark; we draw it ourselves.
-    let idx = 0;
+    // draw tiles
+    let i = 0;
+    for(let r=0;r<rows;r++){
+      for(let c=0;c<cols;c++){
+        const tile = tiles[i++];
+        if(!tile) continue;
 
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const tile = tiles[idx++];
-        if (!tile) continue;
+        const img = tile.querySelector("img");
+        if(!img) continue;
 
         const x = pad + c * tileSize;
         const y = pad + r * tileSize;
 
-        const kind = tile.dataset.kind || "";
-        const srcFromData = tile.dataset.src || "";
-        const imgEl = tile.querySelector("img");
-        const fallbackSrc = imgEl?.currentSrc || imgEl?.src || "";
-
-        // For export we ALWAYS try proxy-first to avoid canvas tainting
-        // Use dataset.src (best) then fallback to image src.
-        const bestSrc = srcFromData || fallbackSrc;
-
-        // Filler or no-src
-        if (!bestSrc || kind === "empty") {
-drawPlaceholder(ctx, x, y, tileSize, tileSize, "");
-          continue;
-        }
-
-        // Missing tile
-        if (kind === "missing") {
-          drawPlaceholder(ctx, x, y, tileSize, tileSize, "Missing");
-          continue;
-        }
-
-        // Load + draw image (proxy first)
-        try {
-          const prox = exportProxyUrl(bestSrc);
-          const img = await loadImageWithRetry(prox, 2, 25000);
-          ctx.drawImage(img, x, y, tileSize, tileSize);
-        } catch (e) {
-          // If export fetch fails, draw placeholder instead of breaking export
-          drawPlaceholder(ctx, x, y, tileSize, tileSize, "Missing");
-        }
+        ctx.drawImage(img, x, y, tileSize, tileSize);
       }
     }
 
-    // ---- WATERMARK (always drawn into exported image) ----
-    // This draws the badge inside the first tile area.
-    // Uses your existing drawWatermarkAcrossTile() which includes ⚡ + text.
-    drawWatermarkAcrossTile(ctx, pad, pad, tileSize, tileSize);
+// ---- WATERMARK (stable on iPhone + desktop) ----
+const wmText = EXPORT_WATERMARK_TEXT;
 
-    // Save using your robust iOS-safe saver
-    await saveCanvasPNG(canvas, "little-ollie-grid.png");
+// lock to first tile
+const maxW = tileSize * 0.92;
+const minFont = 9;
+const maxFont = Math.round(tileSize * 0.22);
+
+let fontSize = maxFont;
+
+while (fontSize > minFont) {
+  ctx.font = `900 ${fontSize}px system-ui, -apple-system`;
+  if (ctx.measureText(wmText).width <= maxW) break;
+  fontSize--;
+}
+
+ctx.font = `900 ${fontSize}px system-ui, -apple-system`;
+ctx.textBaseline = "top";
+
+const pad = Math.max(4, Math.round(fontSize * 0.35));
+const textW = ctx.measureText(wmText).width;
+
+const boxW = Math.min(textW + pad * 2, maxW);
+const boxH = fontSize + pad * 2;
+
+const bx = 6;
+const by = 6;
+
+// background
+ctx.fillStyle = "rgba(0,0,0,0.65)";
+ctx.fillRect(bx, by, boxW, boxH);
+
+// text
+ctx.fillStyle = "#ffd22e";
+ctx.fillText(wmText, bx + pad, by + pad);
+
+
+    // export
+    const url = canvas.toDataURL("image/png",1);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "lo-grid.png";
+    a.click();
 
     setStatus("Saved ✔");
-  } catch (err) {
+
+  } catch(err){
     console.error(err);
-    addError(err, "Export");
     setStatus("Export failed");
   }
 }
+
 
 function getComputedGridCols(gridEl) {
   if (!gridEl) return 1;
