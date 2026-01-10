@@ -736,8 +736,6 @@ let items = flattenItems(chosen); // ✅ always fill in order
   usedItems = items; // we will fill remaining with blank tiles
 }
 
-  }
-
   setGridColumns(cols);
 
   const grid = $("grid");
