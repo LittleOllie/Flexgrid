@@ -810,12 +810,6 @@ body.dark .guideGlow::after{
       <img src="./header.png" alt="Little Ollie Header" />
     </div>
 <!-- ✅ Tabs / Section Switcher -->
-<div class="tabsBar" id="tabsBar">
-  <button type="button" class="tabBtn active" data-target="setupPanel">🧰 Setup</button>
-  <button type="button" class="tabBtn" data-target="controlsPanel">📦 Collections</button>
-  <button type="button" class="tabBtn" data-target="gridPanel">🧩 Grid</button>
-</div>
-
 
 <section class="panel" id="setupPanel">
       <div class="row two">
@@ -928,7 +922,7 @@ body.dark .guideGlow::after{
       </div>
     </section>
 
-    <section class="panel" id="controlsPanel" style="display:none;">
+<section class="panel" id="controlsPanel">
       <div class="row">
         <label class="lbl">Collections</label>
 
@@ -1047,47 +1041,6 @@ body.dark .guideGlow::after{
   })();
 </script>
  
-<script>
-  (function(){
-    const tabsBar = document.getElementById("tabsBar");
-    if(!tabsBar) return;
-
-    const tabBtns = Array.from(tabsBar.querySelectorAll(".tabBtn"));
-
-    function showPanel(panelId){
-      const panels = ["setupPanel", "controlsPanel", "gridPanel"];
-      panels.forEach(id => {
-        const el = document.getElementById(id);
-        if(!el) return;
-
-        // keep your collections panel "display:none" behaviour when hidden
-        el.style.display = (id === panelId) ? "" : "none";
-      });
-
-      tabBtns.forEach(btn => {
-        btn.classList.toggle("active", btn.dataset.target === panelId);
-      });
-
-      try { localStorage.setItem("lo_flexgrid_tab", panelId); } catch(e){}
-    }
-
-    tabBtns.forEach(btn => {
-      btn.addEventListener("click", () => showPanel(btn.dataset.target));
-    });
-
-    // default tab
-    let start = "setupPanel";
-    try {
-      start = localStorage.getItem("lo_flexgrid_tab") || "setupPanel";
-    } catch(e){}
-
-    // if saved tab doesn't exist, fallback
-    if(!document.getElementById(start)) start = "setupPanel";
-
-    showPanel(start);
-  })();
-</script>
-
 <script type="module" src="./app.js?v=20260109-31"></script>
 </body>
 </html>
