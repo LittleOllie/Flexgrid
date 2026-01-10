@@ -2,13 +2,47 @@
 <html lang="en">
 <head>
 
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; img-src 'self' data: blob: https://loflexgrid.littleollienft.workers.dev https://nft-cdn.alchemy.com https://cloudflare-ipfs.com https://ipfs.io https://nftstorage.link https://w3s.link https://dweb.link https://gateway.pinata.cloud https://w3s.link https://dweb.link https://gateway.ipfs.io https://ipfs.filebase.io https://cf-ipfs.com http://localhost:3000; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:3000 http://localhost:8000 http://127.0.0.1:3000 http://127.0.0.1:8000 https://*.alchemy.com https://loflexgrid.littleollienft.workers.dev;">
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  base-uri 'self';
+  object-src 'none';
+
+  img-src
+    'self'
+    data:
+    blob:
+    https://loflexgrid.littleollienft.workers.dev
+    https://nft-cdn.alchemy.com
+    https://cloudflare-ipfs.com
+    https://ipfs.io
+    https://nftstorage.link
+    https://w3s.link
+    https://dweb.link;
+
+  style-src
+    'self'
+    'unsafe-inline'
+    https://fonts.googleapis.com;
+
+  font-src
+    'self'
+    https://fonts.gstatic.com
+    data:;
+
+  script-src
+    'self'
+    'unsafe-inline';
+
+  connect-src
+    'self'
+    https://*.alchemy.com
+    https://loflexgrid.littleollienft.workers.dev;
+">
 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Little Ollie Flex Grid</title>
-  <link rel="icon" type="image/png" href="../icons/icon-192.png" />
-  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700;800&display=swap" rel="stylesheet">
 
   <style>
     *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
@@ -295,31 +329,6 @@ body{
       border-radius: 0 !important;
       user-select:none;
       -webkit-user-drag:none;
-    }
-    
-    /* ✅ Tile checkbox for selection */
-    .tileCheckbox{
-      position: absolute;
-      top: 6px;
-      left: 6px;
-      width: 24px;
-      height: 24px;
-      z-index: 10;
-      cursor: pointer;
-      accent-color: #ffd22e;
-      background: rgba(255, 255, 255, 0.9);
-      border: 2px solid rgba(0, 0, 0, 0.3);
-      border-radius: 4px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-      transition: all 0.2s ease;
-    }
-    .tileCheckbox:hover{
-      transform: scale(1.1);
-      box-shadow: 0 4px 12px rgba(255, 210, 46, 0.5);
-    }
-    .tileCheckbox:checked{
-      background: #ffd22e;
-      border-color: #ffd22e;
     }
     .fillerText{
       width:100%; height:100%;
@@ -889,6 +898,6 @@ body::before{
     })();
   </script>
 
-<script type="module" src="./app.js?v=20260110-62"></script>
+<script type="module" src="./app.js?v=20260109-63"></script>
 </body>
 </html>
