@@ -670,11 +670,229 @@ function bestFitDims(n, maxCols = 12) {
 }
 
 
+
 function clampInt(v, min, max, fallback) {
   const n = Number(v);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(min, Math.min(max, Math.round(n)));
 }
+
+// ==========================
+// Trait Group Sort (instant reorder)
+// ==========================
+state.currentGridItems = [];         // NFT items currently in grid (no fillers)
+state.originalGridKeys = [];         // original order keys for "Original"
+state.lastTraitType = "";            // last chosen trait group
+
+function normalizeTraitType(t){
+  const s = String(t || "").trim();
+  if (!s) return "";
+  const low = s.toLowerCase();
+
+  if (low === "bg" || low === "b/g" || low === "background") return "Background";
+  if (low === "hat" || low === "head" || low === "headwear") return "Hat";
+  if (low === "eyes" || low === "eye") return "Eyes";
+  if (low === "mouth" || low === "smile") return "Mouth";
+  if (low === "body" || low === "skin") return "Body";
+  if (low === "clothes" || low === "outfit") return "Clothes";
+
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function extractAttributes(item){
+  const attrs = item?.attributes;
+  if (!attrs) return [];
+  if (Array.isArray(attrs)) return attrs;
+  if (typeof attrs === "object") {
+    return Object.entries(attrs).map(([k, v]) => ({ trait_type: k, value: v }));
+  }
+  return [];
+}
+
+function getTraitValue(item, traitType){
+  const want = normalizeTraitType(traitType);
+  if (!want) return "";
+
+  const attrs = extractAttributes(item);
+  for (const a of attrs){
+    const tt = normalizeTraitType(a?.trait_type || a?.traitType || a?.type);
+    if (!tt) continue;
+    if (tt === want) {
+      const v = a?.value;
+      return (v === null || v === undefined) ? "" : String(v);
+    }
+  }
+  return "";
+}
+
+function computeTraitTypes(items){
+  const counts = new Map();
+  for (const it of items){
+    const attrs = extractAttributes(it);
+    for (const a of attrs){
+      const tt = normalizeTraitType(a?.trait_type || a?.traitType || a?.type);
+      if (!tt) continue;
+      counts.set(tt, (counts.get(tt) || 0) + 1);
+    }
+  }
+
+  const arr = [...counts.entries()]
+    .filter(([_, n]) => n >= 3)
+    .sort((a, b) => b[1] - a[1]);
+
+  return arr.slice(0, 10).map(([tt]) => tt);
+}
+
+function ensureTraitBar(){
+  const stage = document.getElementById("stage");
+  if (!stage) return null;
+
+  let bar = document.getElementById("traitBar");
+  if (bar) return bar;
+
+  bar = document.createElement("div");
+  bar.id = "traitBar";
+  bar.style.display = "flex";
+  bar.style.flexWrap = "wrap";
+  bar.style.gap = "8px";
+  bar.style.padding = "8px 10px";
+  bar.style.borderTop = "1px solid rgba(255,255,255,.12)";
+  bar.style.background = "rgba(0,0,0,.10)";
+  bar.style.alignItems = "center";
+
+  const gridWrap = stage.querySelector(".gridWrap");
+  if (gridWrap) stage.insertBefore(bar, gridWrap);
+  else stage.appendChild(bar);
+
+  return bar;
+}
+
+function renderTraitButtons(items){
+  const bar = ensureTraitBar();
+  if (!bar) return;
+
+  bar.innerHTML = "";
+
+  const types = computeTraitTypes(items);
+  if (!types.length){
+    const note = document.createElement("div");
+    note.style.fontSize = "12px";
+    note.style.opacity = "0.9";
+    note.textContent = "Trait groups: (none found in metadata for this grid)";
+    bar.appendChild(note);
+    return;
+  }
+
+  const label = document.createElement("div");
+  label.style.fontSize = "12px";
+  label.style.fontWeight = "900";
+  label.style.opacity = "0.95";
+  label.textContent = "Group:";
+  bar.appendChild(label);
+
+  const originalBtn = document.createElement("button");
+  originalBtn.type = "button";
+  originalBtn.className = "btnSmall";
+  originalBtn.textContent = "↩️ Original";
+  originalBtn.addEventListener("click", () => {
+    if (!state.originalGridKeys?.length) return;
+    reorderGridByKeys(state.originalGridKeys);
+    state.lastTraitType = "";
+    setStatus("Order: original ✅");
+  });
+  bar.appendChild(originalBtn);
+
+  types.forEach((tt) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btnSmall";
+    b.textContent = tt;
+
+    const isActive = (state.lastTraitType === tt);
+    if (isActive) {
+      b.style.filter = "brightness(1.05)";
+      b.style.boxShadow = "0 0 0 2px rgba(255,221,85,0.55), 0 10px 18px rgba(0,0,0,.18)";
+    }
+
+    b.addEventListener("click", () => applyTraitGrouping(tt));
+    bar.appendChild(b);
+  });
+
+  const hint = document.createElement("div");
+  hint.style.marginLeft = "auto";
+  hint.style.fontSize = "12px";
+  hint.style.opacity = "0.85";
+  hint.textContent = "Click a trait to group tiles instantly.";
+  bar.appendChild(hint);
+}
+
+function applyTraitGrouping(traitType){
+  const items = state.currentGridItems || [];
+  if (!items.length) return;
+
+  const want = normalizeTraitType(traitType);
+  state.lastTraitType = want;
+
+  const sorted = items
+    .map((it, idx) => {
+      const contract = (it?.contract || it?.contractAddress || it?.sourceKey || "").toLowerCase();
+      const tokenId = (it?.tokenId || "").toString();
+      const key = contract && tokenId ? `${contract}:${tokenId}` : "";
+
+      let v = getTraitValue(it, want);
+      v = v ? v.toLowerCase() : "~~~"; // missing last
+
+      return { key, v, idx };
+    })
+    .filter(x => x.key);
+
+  sorted.sort((a, b) => {
+    if (a.v < b.v) return -1;
+    if (a.v > b.v) return 1;
+    return a.idx - b.idx; // stable
+  });
+
+  const keys = sorted.map(x => x.key);
+  reorderGridByKeys(keys);
+  renderTraitButtons(items);
+
+  setStatus(`Grouped by: ${want} ✅`);
+}
+
+function reorderGridByKeys(keys){
+  const grid = document.getElementById("grid");
+  if (!grid) return;
+
+  const tiles = Array.from(grid.querySelectorAll(".tile"));
+  const map = new Map();
+  const fillers = [];
+
+  for (const t of tiles){
+    const k = t.dataset.key || "";
+    if (k) map.set(k, t);
+    else fillers.push(t);
+  }
+
+  grid.innerHTML = "";
+
+  for (const k of keys){
+    const t = map.get(k);
+    if (t) grid.appendChild(t);
+  }
+
+  for (const [k, t] of map.entries()){
+    if (!keys.includes(k)) grid.appendChild(t);
+  }
+
+  for (const f of fillers) grid.appendChild(f);
+
+  requestAnimationFrame(() => {
+    try { syncWatermarkDOMToOneTile(); } catch(e){}
+    try { enableDragDrop(); } catch(e){}
+    try { updateGuideGlow(); } catch(e){}
+  });
+}
+
 
 function getGridChoice() {
   const v = $("gridSize")?.value || "auto";
@@ -731,6 +949,7 @@ let items = flattenItems(chosen); // ✅ always fill in order
     totalSlots = choice.cap;
     usedItems = items.slice(0, totalSlots);
 } else {
+
   // ✅ Auto = closest square n×n
   const side = Math.ceil(Math.sqrt(items.length));
   rows = side;
@@ -738,6 +957,14 @@ let items = flattenItems(chosen); // ✅ always fill in order
   totalSlots = rows * cols;
   usedItems = items; // we will fill remaining with blank tiles
 }
+// ✅ Remember current grid NFTs for instant trait grouping
+state.currentGridItems = usedItems.slice();
+state.originalGridKeys = usedItems.map(it => {
+  const c = (it?.contract || it?.contractAddress || it?.sourceKey || "").toLowerCase();
+  const t = (it?.tokenId || "").toString();
+  return c && t ? `${c}:${t}` : "";
+}).filter(Boolean);
+state.lastTraitType = "";
 
   setGridColumns(cols);
 
@@ -773,6 +1000,7 @@ else setStatus("Grid built ✅ (drag tiles to reorder on desktop)");
 
 enableDragDrop();
 updateGuideGlow();
+renderTraitButtons(state.currentGridItems);
 
 }
 
@@ -983,6 +1211,7 @@ tile.classList.remove("isLoaded","isMissing");
   const tokenId = (it?.tokenId || "").toString();
   tile.dataset.contract = contract;
   tile.dataset.tokenId = tokenId;
+tile.dataset.key = contract && tokenId ? `${contract}:${tokenId}` : "";
 
   const raw = it?.image || "";
   tile.dataset.kind = raw ? "nft" : "empty";
@@ -1212,7 +1441,21 @@ function groupByCollection(nfts) {
 
     const entry = map.get(contract);
     entry.count++;
-    entry.items.push({ name, tokenId, contract, image, sourceKey: contract });
+const attributes =
+  nft?.rawMetadata?.attributes ||
+  nft?.rawMetadata?.metadata?.attributes ||
+  nft?.metadata?.attributes ||
+  nft?.contractMetadata?.openSea?.traits ||
+  [];
+
+entry.items.push({
+  name,
+  tokenId,
+  contract,
+  image,
+  sourceKey: contract,
+  attributes, // ✅ stored for grouping
+});
   }
 
   return [...map.values()].sort((a, b) => b.count - a.count);
