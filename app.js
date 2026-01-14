@@ -10,6 +10,9 @@
 
 const $ = (id) => document.getElementById(id);
 
+// ✅ Global toggle (was incorrectly inside getIpfsPath before)
+const SHOW_ERROR_PANEL = false; // set true only when debugging
+
 // ---------- Guided glow (onboarding highlight) ----------
 function setGuideGlow(ids = []) {
   const all = [
@@ -38,7 +41,9 @@ function setGuideGlow(ids = []) {
 // Call this any time state changes
 function updateGuideGlow() {
   const hasWallets = state.wallets.length > 0;
-  const controlsVisible = !!document.getElementById("controlsPanel") && $("controlsPanel")?.style.display !== "none";
+  const controlsVisible =
+    !!document.getElementById("controlsPanel") &&
+    $("controlsPanel")?.style.display !== "none";
   const hasSelectedCollections = state.selectedKeys && state.selectedKeys.size > 0;
 
   const gridHasTiles = document.querySelectorAll("#grid .tile").length > 0;
@@ -68,9 +73,8 @@ function updateGuideGlow() {
     return;
   }
 
-  // 5) Grid built -> highlight export (until exported)
+  // 5) Grid built -> highlight export
   if (gridHasTiles && !exportEnabled) {
-    // (Normally export is enabled right after build, but keep this safe)
     setGuideGlow(["exportBtn"]);
     return;
   }
@@ -84,7 +88,6 @@ function updateGuideGlow() {
   setGuideGlow([]);
 }
 
-
 const state = {
   collections: [],
   selectedKeys: new Set(),
@@ -96,7 +99,6 @@ state.imageLoadState = { total: 0, loaded: 0, failed: 0, retrying: 0 };
 
 // ---- Export watermark (single source of truth) ----
 const EXPORT_WATERMARK_TEXT = "⚡ Powered by Little Ollie";
-
 
 // Configuration (loaded securely - see loadConfig() below)
 let ALCHEMY_KEY = null;
@@ -144,10 +146,10 @@ let gridImgLimit = createLimiter(3);
 
 // ---------- Image loading tune ----------
 const IMG_LOAD = {
-  gridTimeoutMs: 25000,     // ✅ longer time to load
+  gridTimeoutMs: 25000, // ✅ longer time to load
   gridDirectTimeoutMs: 20000,
-  retriesPerCandidate: 1,   // extra tries per URL
-  backoffMs: 500,           // wait between attempts
+  retriesPerCandidate: 1, // extra tries per URL
+  backoffMs: 500, // wait between attempts
 };
 
 // Prefer reliable gateways first (you can reorder later)
@@ -191,7 +193,9 @@ function loadImgWithTimeout(imgEl, src, timeout = 25000) {
       };
 
       // ✅ prevents broken icon / filename flash
-      try { imgEl.removeAttribute("src"); } catch(e) {}
+      try {
+        imgEl.removeAttribute("src");
+      } catch (e) {}
       imgEl.src = src;
     }),
     new Promise((_, reject) =>
@@ -199,7 +203,6 @@ function loadImgWithTimeout(imgEl, src, timeout = 25000) {
     ),
   ]);
 }
-
 
 function loadImgWithLimiter(imgEl, src, timeout = 25000) {
   return gridImgLimit(() => loadImgWithTimeout(imgEl, src, timeout));
@@ -277,7 +280,6 @@ function updateErrorLogDisplay() {
     .join("");
 }
 
-
 function clearErrorLog() {
   errorLog.errors = [];
   updateErrorLogDisplay();
@@ -350,7 +352,7 @@ function enableButtons() {
   if (buildBtn) buildBtn.disabled = state.selectedKeys.size === 0;
   if (exportBtn) exportBtn.disabled = true;
 
-  updateGuideGlow(); // ✅ ADD THIS LINE
+  updateGuideGlow();
 }
 
 function setGridColumns(cols) {
@@ -364,15 +366,12 @@ function safeText(s) {
 
 // ---------- URL helpers ----------
 function isAlreadyProxied(url) {
-  // ✅ FIX: IMG_PROXY can be null before config loads
   return typeof url === "string" && !!IMG_PROXY && url.startsWith(IMG_PROXY);
 }
 
 function getIpfsPath(url) {
   if (!url) return "";
   const s = String(url).trim();
-
-const SHOW_ERROR_PANEL = false; // set true if you ever want it back
 
   if (s.startsWith("ipfs://")) {
     let p = s.slice("ipfs://".length);
@@ -408,6 +407,7 @@ function normalizeImageUrl(url) {
 
 function safeProxyUrl(src) {
   if (!src) return "";
+  if (!IMG_PROXY) return normalizeImageUrl(src); // ✅ if config not loaded yet, don't crash
   if (isAlreadyProxied(src)) return src;
 
   const direct = normalizeImageUrl(src);
@@ -426,18 +426,8 @@ function exportProxyUrl(src) {
 }
 
 // ---------- Watermark helpers (DOM + Export) ----------
-function ellipsizeToWidth(ctx, text, maxWidth) {
-  if (ctx.measureText(text).width <= maxWidth) return text;
-  const ell = "…";
-  let t = text;
-  while (t.length > 1 && ctx.measureText(t + ell).width > maxWidth) {
-    t = t.slice(0, -1);
-  }
-  return t + ell;
-}
-
 function syncWatermarkDOMToOneTile() {
-  const wm = document.getElementById("wmGrid"); // now an <img>
+  const wm = document.getElementById("wmGrid"); // <img>
   const grid = document.getElementById("grid");
   if (!wm || !grid) return;
 
@@ -447,26 +437,21 @@ function syncWatermarkDOMToOneTile() {
     return;
   }
 
-  // Keep watermark as overlay (survives rebuild)
   const gridWrap = grid.parentElement; // .gridWrap
   if (wm.parentElement !== gridWrap) gridWrap.appendChild(wm);
 
   wm.style.display = "block";
-
-  // ✅ bang on top-left corner of the grid
   wm.style.position = "absolute";
   wm.style.left = "0px";
   wm.style.top = "0px";
   wm.style.zIndex = "9999";
   wm.style.pointerEvents = "none";
 
-  // ✅ lock watermark width to FIRST tile width
   const tileW = firstTile.getBoundingClientRect().width || 0;
-  const w = Math.max(40, Math.floor(tileW)); // minimum so it's never tiny
+  const w = Math.max(40, Math.floor(tileW));
   wm.style.width = w + "px";
-  wm.style.height = "auto"; // keep PNG aspect ratio
+  wm.style.height = "auto";
 }
-
 
 // ---------- Wallet list ----------
 function normalizeWallet(w) {
@@ -495,7 +480,6 @@ function addWallet() {
   setStatus(`Wallet added ✅ (${state.wallets.length} total)`);
 }
 
-
 function removeWallet(w) {
   state.wallets = state.wallets.filter((x) => x !== w);
   renderWalletList();
@@ -503,7 +487,6 @@ function removeWallet(w) {
   updateGuideGlow();
   setStatus(`Wallet removed ✅ (${state.wallets.length} remaining)`);
 }
-
 
 function renderWalletList() {
   const wrap = $("walletList");
@@ -580,7 +563,6 @@ function renderCollectionsList() {
       updateGuideGlow();
     });
 
-
     const label = document.createElement("div");
     label.style.minWidth = "0";
 
@@ -625,52 +607,6 @@ function flattenItems(chosen) {
   return all;
 }
 
-function mixEvenly(chosen) {
-  const queues = chosen.map((c) => ({ key: c.key, items: [...c.items] }));
-  const out = [];
-  let alive = true;
-
-  while (alive) {
-    alive = false;
-    for (const q of queues) {
-      if (q.items.length) {
-        alive = true;
-        out.push({ ...q.items.shift(), sourceKey: q.key });
-      }
-    }
-  }
-  return out;
-}
-
-function bestFitDims(n, maxCols = 12) {
-  // Choose rows/cols that:
-  // 1) wastes the fewest slots (rows*cols - n)
-  // 2) is as "square-ish" as possible (aspect close to 1)
-  // 3) prefers more columns (looks nicer on desktop) if tied
-
-  const minCols = 2;
-  let best = { rows: 1, cols: n, waste: Infinity, aspect: Infinity };
-
-  for (let cols = minCols; cols <= maxCols; cols++) {
-    const rows = Math.ceil(n / cols);
-    const cap = rows * cols;
-    const waste = cap - n;
-    const aspect = Math.max(cols / rows, rows / cols); // 1 = perfect square
-
-    // Score: waste dominates, then aspect
-    const better =
-      waste < best.waste ||
-      (waste === best.waste && aspect < best.aspect) ||
-      (waste === best.waste && aspect === best.aspect && cols > best.cols);
-
-    if (better) best = { rows, cols, waste, aspect };
-  }
-
-  return { rows: best.rows, cols: best.cols };
-}
-
-
-
 function clampInt(v, min, max, fallback) {
   const n = Number(v);
   if (!Number.isFinite(n)) return fallback;
@@ -680,11 +616,11 @@ function clampInt(v, min, max, fallback) {
 // ==========================
 // Trait Group Sort (instant reorder)
 // ==========================
-state.currentGridItems = [];         // NFT items currently in grid (no fillers)
-state.originalGridKeys = [];         // original order keys for "Original"
-state.lastTraitType = "";            // last chosen trait group
+state.currentGridItems = [];
+state.originalGridKeys = [];
+state.lastTraitType = "";
 
-function normalizeTraitType(t){
+function normalizeTraitType(t) {
   const s = String(t || "").trim();
   if (!s) return "";
   const low = s.toLowerCase();
@@ -699,7 +635,7 @@ function normalizeTraitType(t){
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function extractAttributes(item){
+function extractAttributes(item) {
   const attrs = item?.attributes;
   if (!attrs) return [];
   if (Array.isArray(attrs)) return attrs;
@@ -709,27 +645,27 @@ function extractAttributes(item){
   return [];
 }
 
-function getTraitValue(item, traitType){
+function getTraitValue(item, traitType) {
   const want = normalizeTraitType(traitType);
   if (!want) return "";
 
   const attrs = extractAttributes(item);
-  for (const a of attrs){
+  for (const a of attrs) {
     const tt = normalizeTraitType(a?.trait_type || a?.traitType || a?.type);
     if (!tt) continue;
     if (tt === want) {
       const v = a?.value;
-      return (v === null || v === undefined) ? "" : String(v);
+      return v === null || v === undefined ? "" : String(v);
     }
   }
   return "";
 }
 
-function computeTraitTypes(items){
+function computeTraitTypes(items) {
   const counts = new Map();
-  for (const it of items){
+  for (const it of items) {
     const attrs = extractAttributes(it);
-    for (const a of attrs){
+    for (const a of attrs) {
       const tt = normalizeTraitType(a?.trait_type || a?.traitType || a?.type);
       if (!tt) continue;
       counts.set(tt, (counts.get(tt) || 0) + 1);
@@ -743,7 +679,7 @@ function computeTraitTypes(items){
   return arr.slice(0, 10).map(([tt]) => tt);
 }
 
-function ensureTraitBar(){
+function ensureTraitBar() {
   const stage = document.getElementById("stage");
   if (!stage) return null;
 
@@ -767,14 +703,14 @@ function ensureTraitBar(){
   return bar;
 }
 
-function renderTraitButtons(items){
+function renderTraitButtons(items) {
   const bar = ensureTraitBar();
   if (!bar) return;
 
   bar.innerHTML = "";
 
   const types = computeTraitTypes(items);
-  if (!types.length){
+  if (!types.length) {
     const note = document.createElement("div");
     note.style.fontSize = "12px";
     note.style.opacity = "0.9";
@@ -808,10 +744,11 @@ function renderTraitButtons(items){
     b.className = "btnSmall";
     b.textContent = tt;
 
-    const isActive = (state.lastTraitType === tt);
+    const isActive = state.lastTraitType === tt;
     if (isActive) {
       b.style.filter = "brightness(1.05)";
-      b.style.boxShadow = "0 0 0 2px rgba(255,221,85,0.55), 0 10px 18px rgba(0,0,0,.18)";
+      b.style.boxShadow =
+        "0 0 0 2px rgba(255,221,85,0.55), 0 10px 18px rgba(0,0,0,.18)";
     }
 
     b.addEventListener("click", () => applyTraitGrouping(tt));
@@ -826,7 +763,7 @@ function renderTraitButtons(items){
   bar.appendChild(hint);
 }
 
-function applyTraitGrouping(traitType){
+function applyTraitGrouping(traitType) {
   const items = state.currentGridItems || [];
   if (!items.length) return;
 
@@ -844,22 +781,22 @@ function applyTraitGrouping(traitType){
 
       return { key, v, idx };
     })
-    .filter(x => x.key);
+    .filter((x) => x.key);
 
   sorted.sort((a, b) => {
     if (a.v < b.v) return -1;
     if (a.v > b.v) return 1;
-    return a.idx - b.idx; // stable
+    return a.idx - b.idx;
   });
 
-  const keys = sorted.map(x => x.key);
+  const keys = sorted.map((x) => x.key);
   reorderGridByKeys(keys);
   renderTraitButtons(items);
 
   setStatus(`Grouped by: ${want} ✅`);
 }
 
-function reorderGridByKeys(keys){
+function reorderGridByKeys(keys) {
   const grid = document.getElementById("grid");
   if (!grid) return;
 
@@ -867,7 +804,7 @@ function reorderGridByKeys(keys){
   const map = new Map();
   const fillers = [];
 
-  for (const t of tiles){
+  for (const t of tiles) {
     const k = t.dataset.key || "";
     if (k) map.set(k, t);
     else fillers.push(t);
@@ -875,24 +812,23 @@ function reorderGridByKeys(keys){
 
   grid.innerHTML = "";
 
-  for (const k of keys){
+  for (const k of keys) {
     const t = map.get(k);
     if (t) grid.appendChild(t);
   }
 
-  for (const [k, t] of map.entries()){
+  for (const [k, t] of map.entries()) {
     if (!keys.includes(k)) grid.appendChild(t);
   }
 
   for (const f of fillers) grid.appendChild(f);
 
   requestAnimationFrame(() => {
-    try { syncWatermarkDOMToOneTile(); } catch(e){}
-    try { enableDragDrop(); } catch(e){}
-    try { updateGuideGlow(); } catch(e){}
+    try { syncWatermarkDOMToOneTile(); } catch (e) {}
+    try { enableDragDrop(); } catch (e) {}
+    try { updateGuideGlow(); } catch (e) {}
   });
 }
-
 
 function getGridChoice() {
   const v = $("gridSize")?.value || "auto";
@@ -932,9 +868,7 @@ function buildGrid() {
     return;
   }
 
-// const mixMode = $("mixMode")?.value || "mix";
-let items = flattenItems(chosen); // ✅ always fill in order
-
+  let items = flattenItems(chosen); // ✅ always fill in order
 
   const HARD_CAP = 400;
   if (items.length > HARD_CAP) items = items.slice(0, HARD_CAP);
@@ -948,23 +882,25 @@ let items = flattenItems(chosen); // ✅ always fill in order
     cols = choice.cols;
     totalSlots = choice.cap;
     usedItems = items.slice(0, totalSlots);
-} else {
+  } else {
+    // ✅ Auto = closest square n×n
+    const side = Math.ceil(Math.sqrt(items.length));
+    rows = side;
+    cols = side;
+    totalSlots = rows * cols;
+    usedItems = items;
+  }
 
-  // ✅ Auto = closest square n×n
-  const side = Math.ceil(Math.sqrt(items.length));
-  rows = side;
-  cols = side;
-  totalSlots = rows * cols;
-  usedItems = items; // we will fill remaining with blank tiles
-}
-// ✅ Remember current grid NFTs for instant trait grouping
-state.currentGridItems = usedItems.slice();
-state.originalGridKeys = usedItems.map(it => {
-  const c = (it?.contract || it?.contractAddress || it?.sourceKey || "").toLowerCase();
-  const t = (it?.tokenId || "").toString();
-  return c && t ? `${c}:${t}` : "";
-}).filter(Boolean);
-state.lastTraitType = "";
+  // ✅ Remember current grid NFTs for instant trait grouping
+  state.currentGridItems = usedItems.slice();
+  state.originalGridKeys = usedItems
+    .map((it) => {
+      const c = (it?.contract || it?.contractAddress || it?.sourceKey || "").toLowerCase();
+      const t = (it?.tokenId || "").toString();
+      return c && t ? `${c}:${t}` : "";
+    })
+    .filter(Boolean);
+  state.lastTraitType = "";
 
   setGridColumns(cols);
 
@@ -974,57 +910,49 @@ state.lastTraitType = "";
 
   const stageTitle = $("stageTitle");
   const stageMeta = $("stageMeta");
-if (stageTitle) {
-  stageTitle.innerHTML = `Little Ollie Flex Grid <span class="titleHint">Edit size • Drag to reorder</span>`;
-}
+
+  if (stageTitle) {
+    stageTitle.innerHTML =
+      `Little Ollie Flex Grid <span class="titleHint">Edit size • Drag to reorder</span>`;
+  }
+
   if (stageMeta) {
-    stageMeta.textContent = `${state.wallets.length} wallet(s) • ${chosen.length} collection(s) • ${usedItems.length} NFT(s) • grid ${rows}×${cols}`;
+    stageMeta.textContent =
+      `${state.wallets.length} wallet(s) • ${chosen.length} collection(s) • ${usedItems.length} NFT(s) • grid ${rows}×${cols}`;
   }
 
   const nftsWithImages = usedItems.filter((item) => item?.image);
-state.imageLoadState.total = nftsWithImages.length;
+  state.imageLoadState.total = nftsWithImages.length;
 
-for (let i = 0; i < usedItems.length; i++) grid.appendChild(makeNFTTile(usedItems[i]));
-const remaining = totalSlots - usedItems.length;
-for (let j = 0; j < remaining; j++) grid.appendChild(makeFillerTile());
+  for (let i = 0; i < usedItems.length; i++) grid.appendChild(makeNFTTile(usedItems[i]));
+  const remaining = totalSlots - usedItems.length;
+  for (let j = 0; j < remaining; j++) grid.appendChild(makeFillerTile());
 
-const wm = $("wmGrid");
-if (wm) wm.style.display = "block";
+  const wm = $("wmGrid");
+  if (wm) wm.style.display = "block";
 
-requestAnimationFrame(syncWatermarkDOMToOneTile);
+  requestAnimationFrame(syncWatermarkDOMToOneTile);
 
-if (exportBtn) exportBtn.disabled = false;
+  if (exportBtn) exportBtn.disabled = false;
 
-if (state.imageLoadState.total > 0) updateImageProgress();
-else setStatus("Grid built ✅ (drag tiles to reorder on desktop)");
+  if (state.imageLoadState.total > 0) updateImageProgress();
+  else setStatus("Grid built ✅ (drag tiles to reorder on desktop)");
 
-enableDragDrop();
-updateGuideGlow();
-renderTraitButtons(state.currentGridItems);
-
+  enableDragDrop();
+  updateGuideGlow();
+  renderTraitButtons(state.currentGridItems);
 }
-
 
 // ---------- Image loading + fallbacks ----------
 const MISSING_GRACE_MS = 30000;
 
-function makeMissingInner() {
-  const d = document.createElement("div");
-  d.className = "fillerText";
-  d.textContent = "Missing";
-  d.style.fontSize = "16px";
-  d.style.opacity = "0.92";
-  return d;
-}
-
 function makeFillerInner() {
   const d = document.createElement("div");
   d.className = "fillerText";
-  d.textContent = "";            // ✅ no LO text
-  d.setAttribute("aria-hidden","true");
+  d.textContent = ""; // ✅ no LO text
+  d.setAttribute("aria-hidden", "true");
   return d;
 }
-
 
 function markMissing(tile, img, rawUrl) {
   try {
@@ -1032,24 +960,19 @@ function markMissing(tile, img, rawUrl) {
   } catch (e) {}
 
   tile.dataset.kind = "missing";
-
-  // ✅ keep placeholder tile.png, no "Missing" text
   tile.classList.remove("isLoaded");
   tile.classList.add("isMissing");
-
-  const src = tile.dataset.src || "";
 
   if (typeof window !== "undefined" && window.location.hostname === "localhost") {
     console.warn("❌ Tile missing", {
       contract: tile.dataset.contract,
       tokenId: tile.dataset.tokenId,
-      src,
+      src: tile.dataset.src || "",
       rawUrl,
       ipfsPath: tile.dataset.ipfsPath,
     });
   }
 }
-
 
 async function fetchBestAlchemyImage({ contract, tokenId, host }) {
   const meta = await fetchAlchemyNFTMetadata({ contract, tokenId, host });
@@ -1095,9 +1018,8 @@ async function loadTileImage(tile, img, rawUrl, retryAttempt = 0) {
           state.imageLoadState.loaded++;
           updateImageProgress();
           tile.dataset.kind = "loaded";
-tile.classList.remove("isMissing");
-tile.classList.add("isLoaded");
-
+          tile.classList.remove("isMissing");
+          tile.classList.add("isLoaded");
           tile.dataset.src = metaUrl;
           return true;
         } catch (_) {}
@@ -1112,9 +1034,8 @@ tile.classList.add("isLoaded");
     state.imageLoadState.loaded++;
     updateImageProgress();
     tile.dataset.kind = "loaded";
-tile.classList.remove("isMissing");
-tile.classList.add("isLoaded");
-
+    tile.classList.remove("isMissing");
+    tile.classList.add("isLoaded");
     return true;
   } catch (e1) {
     // Strategy 3: Direct (DISPLAY-ONLY) fallback (non-IPFS only)
@@ -1125,9 +1046,8 @@ tile.classList.add("isLoaded");
         state.imageLoadState.loaded++;
         updateImageProgress();
         tile.dataset.kind = "loaded";
-tile.classList.remove("isMissing");
-tile.classList.add("isLoaded");
-
+        tile.classList.remove("isMissing");
+        tile.classList.add("isLoaded");
         return true;
       } catch (_) {
         // continue
@@ -1148,9 +1068,8 @@ tile.classList.add("isLoaded");
             state.imageLoadState.loaded++;
             updateImageProgress();
             tile.dataset.kind = "loaded";
-tile.classList.remove("isMissing");
-tile.classList.add("isLoaded");
-
+            tile.classList.remove("isMissing");
+            tile.classList.add("isLoaded");
             tile.dataset.src = gatewayUrl;
             return true;
           } catch (_) {
@@ -1182,9 +1101,8 @@ tile.classList.add("isLoaded");
         state.imageLoadState.loaded++;
         updateImageProgress();
         tile.dataset.kind = "loaded";
-tile.classList.remove("isMissing");
-tile.classList.add("isLoaded");
-
+        tile.classList.remove("isMissing");
+        tile.classList.add("isLoaded");
         return true;
       } catch (_) {}
     }
@@ -1198,20 +1116,20 @@ tile.classList.add("isLoaded");
     }
 
     return false;
-  } // ✅ END catch
-} // ✅ END loadTileImage (THIS WAS MISSING BEFORE)
+  }
+}
 
 function makeNFTTile(it) {
   const tile = document.createElement("div");
   tile.className = "tile";
-tile.classList.remove("isLoaded","isMissing");
+  tile.classList.remove("isLoaded", "isMissing");
   tile.draggable = true;
 
   const contract = (it?.contract || it?.contractAddress || it?.sourceKey || "").toLowerCase();
   const tokenId = (it?.tokenId || "").toString();
   tile.dataset.contract = contract;
   tile.dataset.tokenId = tokenId;
-tile.dataset.key = contract && tokenId ? `${contract}:${tokenId}` : "";
+  tile.dataset.key = contract && tokenId ? `${contract}:${tokenId}` : "";
 
   const raw = it?.image || "";
   tile.dataset.kind = raw ? "nft" : "empty";
@@ -1219,7 +1137,7 @@ tile.dataset.key = contract && tokenId ? `${contract}:${tokenId}` : "";
 
   const img = document.createElement("img");
   img.loading = "lazy";
-img.alt = ""; // ✅ prevents filename/name text showing
+  img.alt = ""; // ✅ prevents filename/name text showing
   img.referrerPolicy = "no-referrer";
   img.crossOrigin = "anonymous";
 
@@ -1338,7 +1256,6 @@ async function loadWallets() {
     showControlsPanel(true);
     updateGuideGlow();
 
-
     const buildBtn = $("buildBtn");
     const exportBtn = $("exportBtn");
     if (buildBtn) buildBtn.disabled = true;
@@ -1441,21 +1358,22 @@ function groupByCollection(nfts) {
 
     const entry = map.get(contract);
     entry.count++;
-const attributes =
-  nft?.rawMetadata?.attributes ||
-  nft?.rawMetadata?.metadata?.attributes ||
-  nft?.metadata?.attributes ||
-  nft?.contractMetadata?.openSea?.traits ||
-  [];
 
-entry.items.push({
-  name,
-  tokenId,
-  contract,
-  image,
-  sourceKey: contract,
-  attributes, // ✅ stored for grouping
-});
+    const attributes =
+      nft?.rawMetadata?.attributes ||
+      nft?.rawMetadata?.metadata?.attributes ||
+      nft?.metadata?.attributes ||
+      nft?.contractMetadata?.openSea?.traits ||
+      [];
+
+    entry.items.push({
+      name,
+      tokenId,
+      contract,
+      image,
+      sourceKey: contract,
+      attributes,
+    });
   }
 
   return [...map.values()].sort((a, b) => b.count - a.count);
@@ -1466,14 +1384,13 @@ function isIOS() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 }
 
-function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 async function loadImageWithRetry(src, tries = 2, timeoutMs = 25000) {
   let lastErr = null;
 
   for (let i = 0; i < tries; i++) {
     try {
-      // lightweight timeout wrapper
       const img = await Promise.race([
         loadImage(src),
         new Promise((_, rej) => setTimeout(() => rej(new Error("Image load timeout")), timeoutMs)),
@@ -1488,120 +1405,27 @@ async function loadImageWithRetry(src, tries = 2, timeoutMs = 25000) {
 }
 
 function drawPlaceholder(ctx, x, y, w, h) {
-  // Intentionally blank:
-  // No fill
-  // No stroke
-  // No text
+  // Intentionally blank
 }
 
+// ✅ WKWebView-safe export handler + browser fallback
+async function saveCanvasPNG(canvas, filename = "little-ollie-grid.png") {
+  const dataUrl = canvas.toDataURL("image/png");
 
-
-function drawLightningIcon(ctx, x, y, size) {
-  // Simple bolt shape (always works, no emoji dependency)
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.beginPath();
-  ctx.moveTo(size * 0.55, 0);
-  ctx.lineTo(size * 0.10, size * 0.60);
-  ctx.lineTo(size * 0.48, size * 0.60);
-  ctx.lineTo(size * 0.30, size);
-  ctx.lineTo(size * 0.90, size * 0.40);
-  ctx.lineTo(size * 0.55, size * 0.40);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawWatermarkAcrossTile(ctx, x, y, w, h) {
-  const text = "Powered by Little Ollie Studio";
-
-  ctx.save();
-
-  // position near top-left of the first tile
-  const padX = Math.max(3, Math.round(w * 0.02));
-  const padY = Math.max(3, Math.round(h * 0.02));
-  const bx = x + padX;
-  const by = y + padY;
-
-  // font sizing
-  let fontPx = Math.max(11, Math.floor(w * 0.085));
-  const minFontPx = 9;
-
-  const fontStack =
-    "system-ui, -apple-system, Segoe UI, Roboto, Arial, Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji";
-
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
-
-  // padding inside badge
-  const padInsideX = () => Math.round(fontPx * 0.75);
-  const padInsideY = () => Math.round(fontPx * 0.55);
-
-  // emoji size + spacing
-  const boltSize = Math.round(fontPx * 1.05);
-  const boltGap = Math.round(fontPx * 0.35);
-
-  const maxBoxW = Math.round(w * 0.92);
-
-  // shrink-to-fit
-  while (fontPx > minFontPx) {
-    ctx.font = `900 ${fontPx}px ${fontStack}`;
-    const textW = ctx.measureText(text).width;
-    const boxW = Math.round(textW + padInsideX() * 2 + boltSize + boltGap);
-    if (boxW <= maxBoxW) break;
-    fontPx--;
+  // ✅ iOS Arcade: send to Swift via message handler
+  if (window.webkit?.messageHandlers?.flexgrid) {
+    window.webkit.messageHandlers.flexgrid.postMessage({
+      type: "exportPNG",
+      filename,
+      dataUrl,
+    });
+    return;
   }
 
-  ctx.font = `900 ${fontPx}px ${fontStack}`;
-  const textW = ctx.measureText(text).width;
-
-  const boxPadX = padInsideX();
-  const boxPadY = padInsideY();
-
-  const boxW = Math.min(maxBoxW, Math.round(textW + boxPadX * 2 + boltSize + boltGap));
-  const boxH = Math.round(Math.max(fontPx, boltSize) + boxPadY * 2);
-
-  // rounded rect badge
-  const r = Math.max(7, Math.round(fontPx * 0.7));
-  ctx.fillStyle = "rgba(0,0,0,0.35)";
-  ctx.strokeStyle = "rgba(255,255,255,0.22)";
-  ctx.lineWidth = Math.max(1, Math.round(w * 0.006));
-
-  ctx.beginPath();
-  ctx.moveTo(bx + r, by);
-  ctx.lineTo(bx + boxW - r, by);
-  ctx.quadraticCurveTo(bx + boxW, by, bx + boxW, by + r);
-  ctx.lineTo(bx + boxW, by + boxH - r);
-  ctx.quadraticCurveTo(bx + boxW, by + boxH, bx + boxW - r, by + boxH);
-  ctx.lineTo(bx + r, by + boxH);
-  ctx.quadraticCurveTo(bx, by + boxH, bx, by + boxH - r);
-  ctx.lineTo(bx, by + r);
-  ctx.quadraticCurveTo(bx, by, bx + r, by);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  // ⚡ emoji (yellow)
-  ctx.font = `900 ${boltSize}px ${fontStack}`;
-  ctx.fillText("⚡", bx + boxPadX, by + boxPadY);
-
-  // text
-  ctx.font = `900 ${fontPx}px ${fontStack}`;
-  const textX = bx + boxPadX + boltSize + boltGap;
-  ctx.fillStyle = "rgba(255,255,255,0.92)";
-  ctx.fillText(text, textX, by + boxPadY);
-
-  ctx.restore();
-}
-
-
-async function saveCanvasPNG(canvas, filename = "little-ollie-grid.png") {
-  // Use blob (best quality + memory)
+  // Browser fallback
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 1.0));
 
-  // If blob fails, fallback to dataURL
   if (!blob) {
-    const dataUrl = canvas.toDataURL("image/png");
     if (isIOS()) {
       const win = window.open(dataUrl, "_blank");
       if (!win) alert("Popup blocked. Allow popups to save the PNG.");
@@ -1616,18 +1440,14 @@ async function saveCanvasPNG(canvas, filename = "little-ollie-grid.png") {
     return;
   }
 
-  // ✅ iPhone/iPad: open in new tab so user can long-press → Save Image
   if (isIOS()) {
     const url = URL.createObjectURL(blob);
     const win = window.open(url, "_blank");
-    if (!win) {
-      alert("Popup blocked. Allow popups to save the PNG.");
-    }
+    if (!win) alert("Popup blocked. Allow popups to save the PNG.");
     setTimeout(() => URL.revokeObjectURL(url), 8000);
     return;
   }
 
-  // ✅ Desktop: download normally
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -1638,7 +1458,7 @@ async function saveCanvasPNG(canvas, filename = "little-ollie-grid.png") {
   setTimeout(() => URL.revokeObjectURL(url), 8000);
 }
 
-function isImgUsable(img){
+function isImgUsable(img) {
   return img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0;
 }
 
@@ -1653,14 +1473,12 @@ async function exportPNG() {
     const cols = getComputedGridCols(grid);
     const rows = Math.ceil(tiles.length / cols);
 
-    // TRUE tile size (iOS fix)
     const rect = tiles[0].getBoundingClientRect();
     let tileSize = Math.round(rect.width);
     if (tileSize < 40) tileSize = 120;
 
-    // Retina scale
     const dpr = window.devicePixelRatio || 1;
-    const scale = Math.min(3, dpr * 2); // crisp but safe
+    const scale = Math.min(3, dpr * 2);
 
     const pad = 4;
 
@@ -1675,66 +1493,53 @@ async function exportPNG() {
     ctx.scale(scale, scale);
     ctx.imageSmoothingQuality = "high";
 
-    ctx.clearRect(0,0,outW,outH);
+    ctx.clearRect(0, 0, outW, outH);
 
-    // draw tiles
-let i = 0;
-for (let r = 0; r < rows; r++) {
-  for (let c = 0; c < cols; c++) {
-    const tile = tiles[i++];
-    if (!tile) continue;
+    let i = 0;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const tile = tiles[i++];
+        if (!tile) continue;
 
-    const img = tile.querySelector("img");
-    const x = pad + c * tileSize;
-    const y = pad + r * tileSize;
+        const img = tile.querySelector("img");
+        const x = pad + c * tileSize;
+        const y = pad + r * tileSize;
 
-    // broken image protection (iPhone fix)
-if (!isImgUsable(img)) {
-  drawPlaceholder(ctx, x, y, tileSize, tileSize, ""); // ✅ blank
-  continue;
-}
+        if (!isImgUsable(img)) {
+          drawPlaceholder(ctx, x, y, tileSize, tileSize);
+          continue;
+        }
 
+        try {
+          ctx.drawImage(img, x, y, tileSize, tileSize);
+        } catch (e) {
+          drawPlaceholder(ctx, x, y, tileSize, tileSize);
+        }
+      }
+    }
 
+    // ✅ watermark image (pblo.png) inside first tile region
     try {
-      ctx.drawImage(img, x, y, tileSize, tileSize);
-} catch (e) {
-  console.warn("⚠️ drawImage failed", e);
-  drawPlaceholder(ctx, x, y, tileSize, tileSize, ""); // ✅ blank
-}
-  }
-}
+      const wmImg = await loadImageWithRetry("./pblo.png", 2, 8000);
+      const x = pad;
+      const y = pad;
+      const w = tileSize;
+      const ratio = wmImg.naturalHeight / wmImg.naturalWidth;
+      const h = Math.round(w * ratio);
+      ctx.drawImage(wmImg, x, y, w, h);
+    } catch (e) {
+      console.warn("Watermark PNG failed to load for export:", e);
+    }
 
-
-// ✅ WATERMARK IMAGE (same as live)
-try {
-  const wmImg = await loadImageWithRetry("./pblo.png", 2, 8000);
-
-  // draw it inside the first tile area (top-left of export)
-  const x = pad;      // aligns to first tile edge
-  const y = pad;
-
-  const w = tileSize; // match tile width exactly
-  const ratio = wmImg.naturalHeight / wmImg.naturalWidth;
-  const h = Math.round(w * ratio);
-
-  ctx.drawImage(wmImg, x, y, w, h);
-} catch (e) {
-  console.warn("Watermark PNG failed to load for export:", e);
-}
-
-    // export
-await saveCanvasPNG(canvas, "lo-grid.png");
-
+    await saveCanvasPNG(canvas, "lo-grid.png");
 
     setStatus("Saved ✔");
     updateGuideGlow();
-
-  } catch(err){
+  } catch (err) {
     console.error(err);
     setStatus("Export failed");
   }
 }
-
 
 function getComputedGridCols(gridEl) {
   if (!gridEl) return 1;
@@ -1758,6 +1563,7 @@ function loadImage(src) {
     img.src = src;
   });
 }
+
 // ---------- Events + Retry ----------
 (function bindEvents() {
   const walletInput = $("walletInput");
@@ -1793,13 +1599,11 @@ function loadImage(src) {
     }
   }
 
-  // ✅ Select all / none (Collections panel)
   const selectAllBtn = $("selectAllBtn");
   const selectNoneBtn = $("selectNoneBtn");
   if (selectAllBtn) selectAllBtn.addEventListener("click", () => setAllCollections(true));
   if (selectNoneBtn) selectNoneBtn.addEventListener("click", () => setAllCollections(false));
 
-  // Main actions
   const loadBtn = $("loadBtn");
   const buildBtn = $("buildBtn");
   const exportBtn = $("exportBtn");
@@ -1807,17 +1611,14 @@ function loadImage(src) {
   if (buildBtn) buildBtn.addEventListener("click", buildGrid);
   if (exportBtn) exportBtn.addEventListener("click", exportPNG);
 
-  // ✅ Retry missing (if button exists)
   const retryBtn = $("retryBtn");
   if (retryBtn && typeof retryMissingTiles === "function") {
     retryBtn.addEventListener("click", retryMissingTiles);
   }
 
-  // ✅ Clear error log (if button exists)
   const clearErrBtn = $("clearErrorLog");
   if (clearErrBtn) clearErrBtn.addEventListener("click", clearErrorLog);
 
-  // Watermark keeps fitting on resize
   window.addEventListener("resize", syncWatermarkDOMToOneTile);
   window.addEventListener("orientationchange", syncWatermarkDOMToOneTile);
 })();
@@ -1841,8 +1642,7 @@ async function initializeConfig() {
     enableButtons();
     setStatus("Ready ✅ ➕ Add wallet(s) → 🔍 Load wallet(s) → select collections → 🧩 Build → 📸 Export");
     showConnectionStatus(false);
-updateGuideGlow();
-
+    updateGuideGlow();
   } catch (error) {
     const statusEl = $("status");
     if (statusEl) {
